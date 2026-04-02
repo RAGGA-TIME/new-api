@@ -212,6 +212,12 @@ const renderStatus = (type, t) => {
           {t('排队中')}
         </Tag>
       );
+    case 'WAITING':
+      return (
+        <Tag color='cyan' shape='circle' prefixIcon={<Clock size={14} />}>
+          {t('等待中')}
+        </Tag>
+      );
     case 'UNKNOWN':
       return (
         <Tag color='white' shape='circle' prefixIcon={<HelpCircle size={14} />}>

@@ -38,6 +38,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/task/kling"
 	tasksora "github.com/QuantumNous/new-api/relay/channel/task/sora"
 	"github.com/QuantumNous/new-api/relay/channel/task/suno"
+	tasktencent "github.com/QuantumNous/new-api/relay/channel/task/tencent"
 	taskvertex "github.com/QuantumNous/new-api/relay/channel/task/vertex"
 	taskVidu "github.com/QuantumNous/new-api/relay/channel/task/vidu"
 	"github.com/QuantumNous/new-api/relay/channel/tencent"
@@ -134,13 +135,12 @@ func GetTaskPlatform(c *gin.Context) constant.TaskPlatform {
 
 func GetTaskAdaptor(platform constant.TaskPlatform) channel.TaskAdaptor {
 	switch platform {
-	//case constant.APITypeAIProxyLibrary:
-	//	return &aiproxy.Adaptor{}
 	case constant.TaskPlatformSuno:
 		return &suno.TaskAdaptor{}
 	}
 	if channelType, err := strconv.ParseInt(string(platform), 10, 64); err == nil {
-		switch channelType {
+		channelTypeInt := int(channelType)
+		switch channelTypeInt {
 		case constant.ChannelTypeAli:
 			return &taskali.TaskAdaptor{}
 		case constant.ChannelTypeKling:
@@ -159,6 +159,8 @@ func GetTaskAdaptor(platform constant.TaskPlatform) channel.TaskAdaptor {
 			return &taskGemini.TaskAdaptor{}
 		case constant.ChannelTypeMiniMax:
 			return &hailuo.TaskAdaptor{}
+		case constant.ChannelTypeHunyuanVideo:
+			return &tasktencent.TaskAdaptor{}
 		}
 	}
 	return nil

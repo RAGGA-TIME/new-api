@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -23,10 +24,11 @@ import (
 )
 
 type TaskSubmitResult struct {
-	UpstreamTaskID string
-	TaskData       []byte
-	Platform       constant.TaskPlatform
-	Quota          int
+	UpstreamTaskID      string
+	TaskData            []byte
+	Platform            constant.TaskPlatform
+	Quota               int
+	TaskAlreadyInserted bool // 标识任务是否已由 relay 层插入数据库
 	//PerCallPrice   types.PriceData
 }
 
@@ -158,7 +160,12 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		return nil, taskErr
 	}
 
-	// 2. 确定模型名称
+	// 1.5 预生成公开 task ID（必须在并发检查之前，确保 createWaitingTask 有可用 ID）
+	if info.PublicTaskID == "" {
+		info.PublicTaskID = model.GenerateTaskID()
+	}
+
+	// 2. 确定模型名称（移到并发检查之前，以便计算价格）
 	modelName := info.OriginModelName
 	if modelName == "" {
 		modelName = service.CoverTaskActionToModelName(platform, info.Action)
@@ -171,12 +178,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		return nil, service.TaskErrorWrapperLocal(err, "model_mapping_failed", http.StatusBadRequest)
 	}
 
-	// 3. 预生成公开 task ID（仅首次）
-	if info.PublicTaskID == "" {
-		info.PublicTaskID = model.GenerateTaskID()
-	}
-
-	// 4. 价格计算：基础模型价格
+	// 3. 价格计算：基础模型价格（移到并发检查之前，以便 WAITING 任务也能扣费）
 	info.OriginModelName = modelName
 	priceData, err := helper.ModelPriceHelperPerCall(c, info)
 	if err != nil {
@@ -184,16 +186,14 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	}
 	info.PriceData = priceData
 
-	// 5. 计费估算：让适配器根据用户请求提供 OtherRatios（时长、分辨率等）
-	//    必须在 ModelPriceHelperPerCall 之后调用（它会重建 PriceData）。
-	//    ResolveOriginTask 可能已在 remix 路径中预设了 OtherRatios，此处合并。
+	// 4. 计费估算：让适配器根据用户请求提供 OtherRatios（时长、分辨率等）
 	if estimatedRatios := adaptor.EstimateBilling(c, info); len(estimatedRatios) > 0 {
 		for k, v := range estimatedRatios {
 			info.PriceData.AddOtherRatio(k, v)
 		}
 	}
 
-	// 6. 将 OtherRatios 应用到基础额度
+	// 5. 将 OtherRatios 应用到基础额度
 	if !common.StringsContains(constant.TaskPricePatches, modelName) {
 		for _, ra := range info.PriceData.OtherRatios {
 			if ra != 1.0 {
@@ -202,11 +202,23 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		}
 	}
 
-	// 7. 预扣费（仅首次 — 重试时 info.Billing 已存在，跳过）
+	// 6. 预扣费（仅首次 — 重试时 info.Billing 已存在，跳过）
+	// WAITING 任务也需要预扣费，确保计费正确
 	if info.Billing == nil && !info.PriceData.FreeModel {
 		info.ForcePreConsume = true
 		if apiErr := service.PreConsumeBilling(c, info.PriceData.Quota, info); apiErr != nil {
 			return nil, service.TaskErrorFromAPIError(apiErr)
+		}
+	}
+
+	// 7. 混元视频并发检查（在价格计算和预扣费之后）
+	channelType := c.GetInt(string(constant.ContextKeyChannelType))
+	if channelType == constant.ChannelTypeHunyuanVideo {
+		if concurrencyChecker, ok := adaptor.(interface{ CheckConcurrency(*relaycommon.RelayInfo) bool }); ok {
+			if !concurrencyChecker.CheckConcurrency(info) {
+				// 超过并发限制，创建等待任务（已预扣费）
+				return createWaitingTask(c, info, platform, adaptor)
+			}
 		}
 	}
 
@@ -561,4 +573,77 @@ func TaskModel2Dto(task *model.Task) *dto.TaskDto {
 		Username:   task.Username,
 		Data:       task.Data,
 	}
+}
+
+// createWaitingTask 创建等待状态的任务（用于并发限制）
+// 当混元视频任务超过并发限制时，将任务保存为 WAITING 状态
+// 等待轮询阶段触发执行
+func createWaitingTask(c *gin.Context, info *relaycommon.RelayInfo, platform constant.TaskPlatform, _ channel.TaskAdaptor) (*TaskSubmitResult, *dto.TaskError) {
+	task := model.InitTask(platform, info)
+	task.Status = model.TaskStatusWaiting
+	task.Progress = "0%"
+	task.Quota = info.PriceData.Quota // 使用已计算的额度
+	task.Action = info.Action         // 设置任务类型（用于日志显示）
+	task.FailReason = "等待执行：并发限制" // 设置详情说明
+
+	// 保存请求数据，以便后续提交时使用
+	taskReq, err := relaycommon.GetTaskRequest(c)
+	if err == nil {
+		// 保存 prompt 到 Properties.Input
+		task.Properties.Input = taskReq.Prompt
+
+		// 保存完整请求数据到 Data，以便 submitWaitingHunyuanTask 解析
+		taskData := map[string]interface{}{
+			"prompt": taskReq.Prompt,
+		}
+		if len(taskReq.Images) > 0 {
+			taskData["image_url"] = taskReq.Images[0]
+		}
+		if taskReq.Size != "" {
+			taskData["size"] = taskReq.Size
+		}
+		if taskReq.Metadata != nil {
+			taskData["metadata"] = taskReq.Metadata
+		}
+		if data, err := common.Marshal(taskData); err == nil {
+			task.Data = data
+		}
+	}
+
+	// 设置计费上下文（与正常任务一致）
+	task.PrivateData.BillingSource = info.BillingSource
+	task.PrivateData.SubscriptionId = info.SubscriptionId
+	task.PrivateData.TokenId = info.TokenId
+	task.PrivateData.BillingContext = &model.TaskBillingContext{
+		ModelPrice:      info.PriceData.ModelPrice,
+		GroupRatio:      info.PriceData.GroupRatioInfo.GroupRatio,
+		ModelRatio:      info.PriceData.ModelRatio,
+		OtherRatios:     info.PriceData.OtherRatios,
+		OriginModelName: info.OriginModelName,
+		PerCallBilling:  common.StringsContains(constant.TaskPricePatches, info.OriginModelName),
+	}
+
+	if err := task.Insert(); err != nil {
+		return nil, service.TaskErrorWrapper(err, "create_waiting_task_failed", http.StatusInternalServerError)
+	}
+
+	// 记录任务日志
+	service.LogTaskConsumption(c, info)
+
+	// 返回响应（格式与正常提交一致，状态为 queued）
+	ov := dto.NewOpenAIVideo()
+	ov.ID = info.PublicTaskID
+	ov.TaskID = info.PublicTaskID
+	ov.Status = dto.VideoStatusQueued
+	ov.CreatedAt = time.Now().Unix()
+	ov.Model = info.OriginModelName
+	c.JSON(http.StatusOK, ov)
+
+	return &TaskSubmitResult{
+		UpstreamTaskID:      "",
+		TaskData:            nil,
+		Platform:            platform,
+		Quota:               info.PriceData.Quota,
+		TaskAlreadyInserted: true, // 任务已插入，控制器跳过插入
+	}, nil
 }
