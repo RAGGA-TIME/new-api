@@ -570,6 +570,12 @@ func RelayTask(c *gin.Context) {
 		}
 		service.LogTaskConsumption(c, relayInfo)
 
+		// 检查任务是否已经插入（如 WAITING 状态的任务）
+		if result.TaskAlreadyInserted {
+			// 任务已由 relay 层插入，跳过
+			return
+		}
+
 		task := model.InitTask(result.Platform, relayInfo)
 		task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
 		task.PrivateData.BillingSource = relayInfo.BillingSource
@@ -586,6 +592,7 @@ func RelayTask(c *gin.Context) {
 		task.Quota = result.Quota
 		task.Data = result.TaskData
 		task.Action = relayInfo.Action
+		task.Status = model.TaskStatusSubmitted // 任务已提交到上游，状态应为 SUBMITTED
 		if insertErr := task.Insert(); insertErr != nil {
 			common.SysError("insert task error: " + insertErr.Error())
 		}

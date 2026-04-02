@@ -1,12 +1,17 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -471,6 +476,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	}
 
 	isDone := task.Status == model.TaskStatusSuccess || task.Status == model.TaskStatusFailure
+	shouldTriggerWaitingTask := false
 	if isDone && snap.Status != task.Status {
 		won, err := task.UpdateWithStatus(snap.Status)
 		if err != nil {
@@ -481,6 +487,9 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 			logger.LogWarn(ctx, fmt.Sprintf("Task %s already transitioned by another process, skip billing", task.TaskID))
 			shouldRefund = false
 			shouldSettle = false
+		} else {
+			// 任务成功完成更新，可以触发等待任务
+			shouldTriggerWaitingTask = true
 		}
 	} else if !snap.Equal(task.Snapshot()) {
 		if _, err := task.UpdateWithStatus(snap.Status); err != nil {
@@ -496,6 +505,11 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	}
 	if shouldRefund {
 		RefundTaskQuota(ctx, task, task.FailReason)
+	}
+
+	// 混元视频任务完成后，触发等待的任务
+	if shouldTriggerWaitingTask {
+		triggerHunyuanWaitingTask(ctx, task.ChannelId)
 	}
 
 	return nil
@@ -557,4 +571,274 @@ func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor
 		return
 	}
 	// 3. 无调整，保持预扣额度
+}
+
+// triggerHunyuanWaitingTask 触发混元视频等待任务
+// 当一个任务完成后，检查是否有等待的任务可以执行
+func triggerHunyuanWaitingTask(ctx context.Context, channelId int) {
+	// 检查当前正在执行的任务数
+	runningCount := model.GetHunyuanRunningTaskCount(channelId)
+	if runningCount >= 1 {
+		logger.LogDebug(ctx, fmt.Sprintf("Channel #%d 仍有 %d 个任务在执行，不触发等待任务", channelId, runningCount))
+		return
+	}
+
+	// 获取等待的任务（按提交顺序）
+	waitingTasks := model.GetHunyuanWaitingTasks(channelId, 1)
+	if len(waitingTasks) == 0 {
+		logger.LogDebug(ctx, fmt.Sprintf("Channel #%d 无等待任务", channelId))
+		return
+	}
+
+	task := waitingTasks[0]
+	logger.LogInfo(ctx, fmt.Sprintf("Channel #%d 触发等待任务 %s", channelId, task.TaskID))
+
+	// 提交等待的任务到上游
+	submitWaitingHunyuanTask(ctx, channelId, task)
+}
+
+// submitWaitingHunyuanTask 提交等待的混元视频任务到上游
+// 直接使用 HTTP 请求，不依赖 FetchTask 方法（该方法用于查询任务状态）
+func submitWaitingHunyuanTask(ctx context.Context, channelId int, task *model.Task) {
+	// 获取渠道信息
+	ch, err := model.CacheGetChannel(channelId)
+	if err != nil {
+		logger.LogError(ctx, fmt.Sprintf("获取渠道 #%d 信息失败: %s", channelId, err.Error()))
+		task.Status = model.TaskStatusFailure
+		task.FailReason = "获取渠道信息失败"
+		task.Progress = "100%"
+		if _, err := task.UpdateWithStatus(model.TaskStatusWaiting); err != nil {
+			logger.LogError(ctx, fmt.Sprintf("更新任务 %s 失败: %s", task.TaskID, err.Error()))
+		}
+		return
+	}
+
+	// 更新状态为 SUBMITTED（使用 CAS 防止并发冲突）
+	won, err := task.UpdateWithStatus(model.TaskStatusWaiting)
+	if err != nil {
+		logger.LogError(ctx, fmt.Sprintf("更新任务 %s 状态失败: %s", task.TaskID, err.Error()))
+		return
+	}
+	if !won {
+		logger.LogWarn(ctx, fmt.Sprintf("任务 %s 已被其他进程处理", task.TaskID))
+		return
+	}
+
+	task.Status = model.TaskStatusSubmitted
+	task.Progress = taskcommon.ProgressSubmitted
+
+	// 从 task.Properties.Input 或 task.Data 解析 prompt
+	prompt := task.Properties.Input
+	if prompt == "" {
+		var taskData map[string]interface{}
+		if err := common.Unmarshal(task.Data, &taskData); err == nil {
+			if p, ok := taskData["prompt"].(string); ok {
+				prompt = p
+			}
+		}
+	}
+
+	if prompt == "" {
+		logger.LogError(ctx, fmt.Sprintf("任务 %s 无有效 prompt", task.TaskID))
+		task.Status = model.TaskStatusFailure
+		task.FailReason = "无有效 prompt"
+		task.Progress = "100%"
+		task.Update()
+		return
+	}
+
+	// 从 task.Data 解析 image_url（如果有）
+	var imageUrl string
+	var taskData map[string]interface{}
+	if err := common.Unmarshal(task.Data, &taskData); err == nil {
+		if url, ok := taskData["image_url"].(string); ok && url != "" {
+			imageUrl = url
+		}
+	}
+
+	// 构建提交请求
+	submitReq := map[string]string{
+		"Prompt": prompt,
+	}
+	if imageUrl != "" {
+		submitReq["ImageUrl"] = imageUrl
+	}
+	reqBody, _ := common.Marshal(submitReq)
+
+	// 解析密钥: AppID|SecretId|SecretKey
+	parts := strings.Split(ch.Key, "|")
+	var secretId, secretKey string
+	if len(parts) >= 3 {
+		secretId = parts[1]
+		secretKey = parts[2]
+	} else if len(parts) == 2 {
+		secretId = parts[0]
+		secretKey = parts[1]
+	} else {
+		logger.LogError(ctx, fmt.Sprintf("渠道 #%d 密钥格式错误", channelId))
+		task.Status = model.TaskStatusFailure
+		task.FailReason = "渠道密钥格式错误"
+		task.Progress = "100%"
+		task.Update()
+		return
+	}
+
+	// 创建 HTTP 请求
+	apiUrl := "https://vclm.tencentcloudapi.com"
+	req, err := http.NewRequest(http.MethodPost, apiUrl, bytes.NewBuffer(reqBody))
+	if err != nil {
+		logger.LogError(ctx, fmt.Sprintf("创建请求失败: %s", err.Error()))
+		task.Status = model.TaskStatusFailure
+		task.FailReason = "创建请求失败"
+		task.Progress = "100%"
+		task.Update()
+		return
+	}
+
+	// 设置请求头
+	timestamp := common.GetTimestamp()
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	req.Header.Set("Host", "vclm.tencentcloudapi.com")
+	req.Header.Set("X-TC-Action", "SubmitHunyuanToVideoJob")
+	req.Header.Set("X-TC-Version", "2024-05-23")
+	req.Header.Set("X-TC-Timestamp", strconv.FormatInt(timestamp, 10))
+	req.Header.Set("X-TC-Region", "ap-guangzhou")
+
+	// 计算签名
+	authorization := buildTencentSign(req, secretId, secretKey, timestamp, "SubmitHunyuanToVideoJob", reqBody)
+	req.Header.Set("Authorization", authorization)
+
+	// 发送请求
+	proxy := ch.GetSetting().Proxy
+	client, err := GetHttpClientWithProxy(proxy)
+	if err != nil {
+		logger.LogError(ctx, fmt.Sprintf("创建 HTTP 客户端失败: %s", err.Error()))
+		task.Status = model.TaskStatusFailure
+		task.FailReason = "创建 HTTP 客户端失败"
+		task.Progress = "100%"
+		task.Update()
+		return
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		logger.LogError(ctx, fmt.Sprintf("提交等待任务 %s 失败: %s", task.TaskID, err.Error()))
+		task.Status = model.TaskStatusFailure
+		task.FailReason = "提交到上游失败"
+		task.Progress = "100%"
+		task.Update()
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		logger.LogError(ctx, fmt.Sprintf("提交等待任务 %s 失败，状态码 %d: %s", task.TaskID, resp.StatusCode, string(respBody)))
+		task.Status = model.TaskStatusFailure
+		task.FailReason = fmt.Sprintf("上游返回错误: %d", resp.StatusCode)
+		task.Progress = "100%"
+		task.Update()
+		return
+	}
+
+	// 解析响应获取上游任务 ID
+	respBody, _ := io.ReadAll(resp.Body)
+	var wrapper struct {
+		Response struct {
+			JobId     string `json:"JobId"`
+			Code      int    `json:"Code,omitempty"`
+			Message   string `json:"Message,omitempty"`
+		} `json:"Response"`
+	}
+	if err := common.Unmarshal(respBody, &wrapper); err != nil {
+		logger.LogError(ctx, fmt.Sprintf("解析等待任务 %s 响应失败: %s", task.TaskID, err.Error()))
+		task.Status = model.TaskStatusFailure
+		task.FailReason = "解析上游响应失败"
+		task.Progress = "100%"
+		task.Update()
+		return
+	}
+
+	if wrapper.Response.Code != 0 {
+		logger.LogError(ctx, fmt.Sprintf("等待任务 %s 上游错误: %s", task.TaskID, wrapper.Response.Message))
+		task.Status = model.TaskStatusFailure
+		task.FailReason = wrapper.Response.Message
+		task.Progress = "100%"
+		task.Update()
+		return
+	}
+
+	// 更新任务信息
+	task.PrivateData.UpstreamTaskID = wrapper.Response.JobId
+	task.Data = respBody
+	task.Status = model.TaskStatusQueued
+	task.Progress = taskcommon.ProgressQueued
+	if err := task.Update(); err != nil {
+		logger.LogError(ctx, fmt.Sprintf("更新等待任务 %s 失败: %s", task.TaskID, err.Error()))
+	}
+
+	logger.LogInfo(ctx, fmt.Sprintf("等待任务 %s 成功提交到上游，JobId: %s", task.TaskID, wrapper.Response.JobId))
+}
+
+// buildTencentSign 构建腾讯云 TC3-HMAC-SHA256 签名
+func buildTencentSign(req *http.Request, secretId, secretKey string, timestamp int64, action string, body []byte) string {
+	host := "vclm.tencentcloudapi.com"
+	service := "vclm"
+	httpRequestMethod := "POST"
+	canonicalURI := "/"
+	canonicalQueryString := ""
+
+	contentType := "application/json; charset=utf-8"
+	canonicalHeaders := fmt.Sprintf("content-type:%s\nhost:%s\nx-tc-action:%s\n",
+		contentType, host, strings.ToLower(action))
+	signedHeaders := "content-type;host;x-tc-action"
+
+	hashedRequestPayload := sha256hex(string(body))
+
+	canonicalRequest := fmt.Sprintf("%s\n%s\n%s\n%s\n%s\n%s",
+		httpRequestMethod,
+		canonicalURI,
+		canonicalQueryString,
+		canonicalHeaders,
+		signedHeaders,
+		hashedRequestPayload)
+
+	algorithm := "TC3-HMAC-SHA256"
+	requestTimestamp := strconv.FormatInt(timestamp, 10)
+	t := time.Unix(timestamp, 0).UTC()
+	date := t.Format("2006-01-02")
+	credentialScope := fmt.Sprintf("%s/%s/tc3_request", date, service)
+	hashedCanonicalRequest := sha256hex(canonicalRequest)
+	string2sign := fmt.Sprintf("%s\n%s\n%s\n%s",
+		algorithm,
+		requestTimestamp,
+		credentialScope,
+		hashedCanonicalRequest)
+
+	secretDate := hmacSha256("TC3"+secretKey, date)
+	secretService := hmacSha256(secretDate, service)
+	secretSigning := hmacSha256(secretService, "tc3_request")
+	signature := hex.EncodeToString([]byte(hmacSha256(secretSigning, string2sign)))
+
+	authorization := fmt.Sprintf("%s Credential=%s/%s, SignedHeaders=%s, Signature=%s",
+		algorithm,
+		secretId,
+		credentialScope,
+		signedHeaders,
+		signature)
+
+	return authorization
+}
+
+// sha256hex 计算 SHA256 哈希并返回十六进制字符串
+func sha256hex(s string) string {
+	b := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(b[:])
+}
+
+// hmacSha256 计算 HMAC-SHA256
+func hmacSha256(key, data string) string {
+	hashed := hmac.New(sha256.New, []byte(key))
+	hashed.Write([]byte(data))
+	return string(hashed.Sum(nil))
 }

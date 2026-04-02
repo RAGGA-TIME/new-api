@@ -39,6 +39,7 @@ const (
 	TaskStatusFailure               = "FAILURE"
 	TaskStatusSuccess               = "SUCCESS"
 	TaskStatusUnknown               = "UNKNOWN"
+	TaskStatusWaiting               = "WAITING" // 等待执行（并发限制）
 )
 
 type Task struct {
@@ -307,7 +308,12 @@ func GetAllUnFinishSyncTasks(limit int) []*Task {
 	var tasks []*Task
 	var err error
 	// get all tasks progress is not 100%
-	err = DB.Where("progress != ?", "100%").Where("status != ?", TaskStatusFailure).Where("status != ?", TaskStatusSuccess).Limit(limit).Order("id").Find(&tasks).Error
+	// 排除 WAITING 状态的任务，它们由 triggerHunyuanWaitingTask 处理
+	err = DB.Where("progress != ?", "100%").
+		Where("status != ?", TaskStatusFailure).
+		Where("status != ?", TaskStatusSuccess).
+		Where("status != ?", TaskStatusWaiting).
+		Limit(limit).Order("id").Find(&tasks).Error
 	if err != nil {
 		return nil
 	}
@@ -505,4 +511,26 @@ func (t *Task) ToOpenAIVideo() *dto.OpenAIVideo {
 	openAIVideo.CompletedAt = t.UpdatedAt
 	openAIVideo.SetMetadata("url", t.GetResultURL())
 	return openAIVideo
+}
+
+// GetHunyuanRunningTaskCount 获取指定渠道正在执行的混元视频任务数
+// 正在执行的任务包括：NOT_START、QUEUED、SUBMITTED、IN_PROGRESS 状态
+func GetHunyuanRunningTaskCount(channelId int) int64 {
+	var count int64
+	DB.Model(&Task{}).
+		Where("channel_id = ?", channelId).
+		Where("status IN ?", []TaskStatus{TaskStatusNotStart, TaskStatusQueued, TaskStatusSubmitted, TaskStatusInProgress}).
+		Count(&count)
+	return count
+}
+
+// GetHunyuanWaitingTasks 获取指定渠道等待的混元视频任务
+// 按 ID 升序排列，确保按提交顺序执行
+func GetHunyuanWaitingTasks(channelId int, limit int) []*Task {
+	var tasks []*Task
+	DB.Where("channel_id = ? AND status = ?", channelId, TaskStatusWaiting).
+		Order("id ASC").
+		Limit(limit).
+		Find(&tasks)
+	return tasks
 }
