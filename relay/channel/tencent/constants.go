@@ -5,6 +5,7 @@ var ModelList = []string{
 	"hunyuan-standard",
 	"hunyuan-standard-256K",
 	"hunyuan-pro",
+	"hunyuan-image",
 }
 
 var ChannelName = "tencent"
