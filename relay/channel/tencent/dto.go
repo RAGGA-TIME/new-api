@@ -1,5 +1,7 @@
 package tencent
 
+import "fmt"
+
 type TencentMessage struct {
 	Role    string `json:"Role"`
 	Content string `json:"Content"`
@@ -44,8 +46,25 @@ type TencentChatRequest struct {
 }
 
 type TencentError struct {
-	Code    int    `json:"Code"`
+	Code    any    `json:"Code"`    // 错误码，可能是 int 或 string
 	Message string `json:"Message"`
+}
+
+// GetCodeString 获取错误码的字符串表示
+func (e *TencentError) GetCodeString() string {
+	if e.Code == nil {
+		return ""
+	}
+	switch v := e.Code.(type) {
+	case string:
+		return v
+	case int:
+		return fmt.Sprintf("%d", v)
+	case float64:
+		return fmt.Sprintf("%.0f", v)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
 }
 
 type TencentUsage struct {
@@ -72,4 +91,40 @@ type TencentChatResponse struct {
 
 type TencentChatResponseSB struct {
 	Response TencentChatResponse `json:"Response,omitempty"`
+}
+
+// TextToImageLiteRequest 混元文生图请求
+// 文档: https://cloud.tencent.com/document/product/1729/108738
+type TextToImageLiteRequest struct {
+	Prompt         string     `json:"Prompt"`                   // 必选：文本描述（最多256字符）
+	NegativePrompt string     `json:"NegativePrompt,omitempty"` // 可选：反向描述（最多256字符）
+	Style          string     `json:"Style,omitempty"`          // 可选：绘画风格
+	LogoParam      *LogoParam `json:"LogoParam,omitempty"`      // 可选：水印参数
+	RspImgType     string     `json:"RspImgType,omitempty"`     // 可选：返回方式 base64/url，默认base64
+}
+
+// LogoParam 水印参数
+type LogoParam struct {
+	LogoUrl  string    `json:"LogoUrl,omitempty"`
+	LogoRect *LogoRect `json:"LogoRect,omitempty"`
+}
+
+// LogoRect 水印位置
+type LogoRect struct {
+	X      int `json:"X,omitempty"`
+	Y      int `json:"Y,omitempty"`
+	Width  int `json:"Width,omitempty"`
+	Height int `json:"Height,omitempty"`
+}
+
+// TextToImageLiteResponse 混元文生图响应
+type TextToImageLiteResponse struct {
+	ResultImage string        `json:"ResultImage"`            // 生成图 Base64编码 或 URL（根据 RspImgType）
+	RequestId   string        `json:"RequestId"`              // 唯一请求 ID
+	Error       *TencentError `json:"Error,omitempty"`        // 错误信息
+}
+
+// TextToImageLiteResponseSB 混元文生图响应包装
+type TextToImageLiteResponseSB struct {
+	Response TextToImageLiteResponse `json:"Response,omitempty"`
 }
