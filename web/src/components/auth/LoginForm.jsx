@@ -91,6 +91,10 @@ const LoginForm = () => {
   const [otherLoginOptionsLoading, setOtherLoginOptionsLoading] =
     useState(false);
   const [wechatCodeSubmitLoading, setWechatCodeSubmitLoading] = useState(false);
+  const [wechatQrCodeUrl, setWechatQrCodeUrl] = useState('');
+  const [wechatSceneStr, setWechatSceneStr] = useState('');
+  const [wechatPolling, setWechatPolling] = useState(false);
+  const wechatPollingRef = useRef(null);
   const [showTwoFA, setShowTwoFA] = useState(false);
   const [passkeySupported, setPasskeySupported] = useState(false);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
@@ -141,6 +145,9 @@ const LoginForm = () => {
       if (githubTimeoutRef.current) {
         clearTimeout(githubTimeoutRef.current);
       }
+      if (wechatPollingRef.current) {
+        clearInterval(wechatPollingRef.current);
+      }
     };
   }, []);
 
@@ -150,14 +157,80 @@ const LoginForm = () => {
     }
   }, []);
 
-  const onWeChatLoginClicked = () => {
+  const onWeChatLoginClicked = async () => {
     if ((hasUserAgreement || hasPrivacyPolicy) && !agreedToTerms) {
       showInfo(t('请先阅读并同意用户协议和隐私政策'));
       return;
     }
     setWechatLoading(true);
     setShowWeChatLoginModal(true);
+
+    // 新模式：公众号带参数二维码
+    if (status.wechat_offiaccount) {
+      try {
+        const res = await API.post('/api/wechat/qrcode');
+        const { success, message, qrcode_url, scene_str } = res.data;
+        if (success) {
+          setWechatQrCodeUrl(qrcode_url);
+          setWechatSceneStr(scene_str);
+          startWeChatPolling(scene_str);
+        } else {
+          showError(message || '获取二维码失败');
+          setShowWeChatLoginModal(false);
+        }
+      } catch (error) {
+        showError('获取微信二维码失败，请重试');
+        setShowWeChatLoginModal(false);
+      }
+    }
+
     setWechatLoading(false);
+  };
+
+  // 开始轮询微信扫码状态
+  const startWeChatPolling = (sceneStr) => {
+    setWechatPolling(true);
+    // 清除之前的轮询
+    if (wechatPollingRef.current) {
+      clearInterval(wechatPollingRef.current);
+    }
+    wechatPollingRef.current = setInterval(async () => {
+      try {
+        const res = await API.get(`/api/wechat/scan-status?scene_str=${sceneStr}`);
+        const { success, status: scanStatus, data, message } = res.data;
+        if (!success && scanStatus === 'expired') {
+          stopWeChatPolling();
+          showError('二维码已过期，请重新获取');
+          return;
+        }
+        if (success && scanStatus === 'confirmed') {
+          stopWeChatPolling();
+          if (data) {
+            // 登录成功
+            userDispatch({ type: 'login', payload: data });
+            localStorage.setItem('user', JSON.stringify(data));
+            setUserData(data);
+            updateAPI();
+            navigate('/');
+            showSuccess('登录成功！');
+            setShowWeChatLoginModal(false);
+          } else {
+            showError(message || '登录失败');
+          }
+        }
+      } catch (error) {
+        // 轮询出错不中断，继续尝试
+      }
+    }, 3000);
+  };
+
+  // 停止轮询
+  const stopWeChatPolling = () => {
+    setWechatPolling(false);
+    if (wechatPollingRef.current) {
+      clearInterval(wechatPollingRef.current);
+      wechatPollingRef.current = null;
+    }
   };
 
   const onSubmitWeChatVerificationCode = async () => {
@@ -810,6 +883,63 @@ const LoginForm = () => {
 
   // 微信登录模态框
   const renderWeChatLoginModal = () => {
+    const isOffiAccountMode = status.wechat_offiaccount;
+
+    const handleModalClose = () => {
+      stopWeChatPolling();
+      setWechatQrCodeUrl('');
+      setWechatSceneStr('');
+      setShowWeChatLoginModal(false);
+    };
+
+    // 新模式：动态二维码扫码登录
+    if (isOffiAccountMode) {
+      return (
+        <Modal
+          title={t('微信扫码登录')}
+          visible={showWeChatLoginModal}
+          maskClosable={true}
+          onCancel={handleModalClose}
+          footer={null}
+          centered={true}
+        >
+          <div className='flex flex-col items-center py-4'>
+            {wechatQrCodeUrl ? (
+              <>
+                <img
+                  src={wechatQrCodeUrl}
+                  alt='微信二维码'
+                  className='mb-4'
+                  style={{ width: 250, height: 250 }}
+                />
+                <div className='text-center'>
+                  <p className='text-gray-600 mb-2'>
+                    {wechatPolling
+                      ? t('请使用微信扫描二维码关注公众号完成登录')
+                      : t('二维码已过期，请关闭后重新获取')}
+                  </p>
+                  {wechatPolling && (
+                    <div className='flex items-center justify-center text-sm text-gray-400'>
+                      <span className='inline-block w-2 h-2 rounded-full bg-green-500 mr-2 animate-pulse' />
+                      {t('等待扫码中...')}
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className='flex flex-col items-center py-8'>
+                <div className='w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center mb-2'>
+                  <WeChatIcon style={{ width: 24, height: 24, color: '#999' }} />
+                </div>
+                <p className='text-gray-400 mt-2'>{t('正在获取二维码...')}</p>
+              </div>
+            )}
+          </div>
+        </Modal>
+      );
+    }
+
+    // 旧模式：验证码方式
     return (
       <Modal
         title={t('微信扫码登录')}

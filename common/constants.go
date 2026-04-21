@@ -46,7 +46,7 @@ var PasswordRegisterEnabled = true
 var EmailVerificationEnabled = false
 var GitHubOAuthEnabled = false
 var LinuxDOOAuthEnabled = false
-var WeChatAuthEnabled = false
+var WeChatAuthEnabled = true
 var TelegramOAuthEnabled = false
 var TurnstileCheckEnabled = false
 var RegisterEnabled = true
@@ -93,6 +93,12 @@ var LinuxDOMinimumTrustLevel = 0
 var WeChatServerAddress = ""
 var WeChatServerToken = ""
 var WeChatAccountQRCodeImageURL = ""
+
+// 微信公众号带参数二维码登录配置
+var WeChatOffiAccountAppID = "wxf3e406db140a26b4"
+var WeChatOffiAccountAppSecret = "d6170d7d477800b8c0040540d61e56ba"
+var WeChatOffiAccountToken = "aB7xK9pLmQ2rT8vYzW4nF1sD5jH6cXeR"
+var WeChatOffiAccountEncodingAESKey = "EWQA2Yq65EAiECknWLg9r5zUnHchzM3PKIa9Tcz3F6L"
 
 var TurnstileSiteKey = ""
 var TurnstileSecretKey = ""

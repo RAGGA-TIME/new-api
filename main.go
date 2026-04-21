@@ -252,6 +252,9 @@ func InitResources() error {
 	// Initialize options, should after model.InitDB()
 	model.InitOptionMap()
 
+	// 启动微信扫码状态清理任务
+	service.StartScanRecordCleaner()
+
 	// 初始化模型
 	model.GetPricing()
 
