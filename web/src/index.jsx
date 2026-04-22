@@ -43,6 +43,8 @@ if (typeof window !== 'undefined') {
   );
 }
 
+const basename = import.meta.env.VITE_BUILD_BASE || '/'
+
 function SemiLocaleWrapper({ children }) {
   const { i18n } = useTranslation();
   const semiLocale = React.useMemo(
@@ -60,6 +62,7 @@ root.render(
     <StatusProvider>
       <UserProvider>
         <BrowserRouter
+          basename={basename}
           future={{
             v7_startTransition: true,
             v7_relativeSplatPath: true,
