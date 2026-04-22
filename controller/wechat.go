@@ -9,7 +9,6 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
-	"strconv"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -364,14 +363,15 @@ func loginOrRegisterByWeChatId(wechatId string, c *gin.Context) {
 		}
 	} else {
 		if common.RegisterEnabled {
-			user.Username = "wechat_" + strconv.Itoa(model.GetMaxUserId()+1)
-			// 生成显示名：微信用户_ + wechatId随机截取 + 4位随机数字
+			// 生成后缀：wechatId随机截取 + 4位随机数字
 			suffix := wechatId
 			if len(suffix) > 6 {
 				start := rand.Intn(len(suffix) - 5)
 				suffix = suffix[start : start+6]
 			}
-			user.DisplayName = "微信用户_" + suffix + fmt.Sprintf("%04d", rand.Intn(10000))
+			suffix += fmt.Sprintf("%04d", rand.Intn(10000))
+			user.Username = "wechat_" + suffix
+			user.DisplayName = "微信用户_" + suffix
 			user.Role = common.RoleCommonUser
 			user.Status = common.UserStatusEnabled
 
