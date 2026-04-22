@@ -2,6 +2,7 @@ package controller
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -300,7 +301,27 @@ func WeChatCallback(c *gin.Context) {
 	}
 	common.SysLog("微信回调原始请求体: " + string(body))
 
-	msg, err := service.ParseWeChatCallback(body)
+	// 获取验证签名所需的参数
+	timestamp := c.Query("timestamp")
+	nonce := c.Query("nonce")
+	msgSignature := c.Query("msg_signature")
+
+	// 如果是加密模式，验证 msg_signature
+	if msgSignature != "" {
+		// 先解析出 Encrypt 字段
+		var encMsg struct {
+			Encrypt string `xml:"Encrypt"`
+		}
+		if err := xml.Unmarshal(body, &encMsg); err == nil && encMsg.Encrypt != "" {
+			if !service.VerifyWeChatMsgSignature(timestamp, nonce, encMsg.Encrypt, msgSignature) {
+				common.SysLog("微信回调消息签名验证失败")
+				c.String(http.StatusOK, "success")
+				return
+			}
+		}
+	}
+
+	msg, err := service.ParseWeChatCallback(body, timestamp, nonce)
 	if err != nil {
 		common.SysLog("解析微信回调消息失败: " + err.Error())
 		c.String(http.StatusOK, "success")

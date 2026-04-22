@@ -1,7 +1,11 @@
 package service
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/sha1"
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
@@ -67,6 +71,13 @@ type WeChatEventMessage struct {
 	Event        string   `xml:"Event"`
 	EventKey     string   `xml:"EventKey"`
 	Ticket       string   `xml:"Ticket"`
+}
+
+// WeChatEncryptedMessage 微信加密消息（消息加解密模式下收到的XML）
+type WeChatEncryptedMessage struct {
+	XMLName    xml.Name `xml:"xml"`
+	ToUserName string   `xml:"ToUserName"`
+	Encrypt    string   `xml:"Encrypt"`
 }
 
 // scanStore 扫码状态存储
@@ -289,13 +300,146 @@ func VerifyWeChatCallback(signature, timestamp, nonce string) bool {
 	return calculated == signature
 }
 
-// ParseWeChatCallback 解析微信事件推送
-func ParseWeChatCallback(body []byte) (*WeChatEventMessage, error) {
+// ParseWeChatCallback 解析微信事件推送（支持加密模式）
+func ParseWeChatCallback(body []byte, timestamp, nonce string) (*WeChatEventMessage, error) {
+	// 先尝试解析为加密消息
+	var encMsg WeChatEncryptedMessage
+	if err := xml.Unmarshal(body, &encMsg); err == nil && encMsg.Encrypt != "" {
+		// 加密模式：需要解密
+		decryptedXML, err := decryptWeChatMessage(encMsg.Encrypt, timestamp, nonce)
+		if err != nil {
+			return nil, fmt.Errorf("解密微信消息失败: %v", err)
+		}
+		// 解密成功后，再解析明文XML
+		var msg WeChatEventMessage
+		if err := xml.Unmarshal([]byte(decryptedXML), &msg); err != nil {
+			return nil, fmt.Errorf("解析解密后的消息失败: %v", err)
+		}
+		return &msg, nil
+	}
+
+	// 明文模式：直接解析
 	var msg WeChatEventMessage
 	if err := xml.Unmarshal(body, &msg); err != nil {
 		return nil, fmt.Errorf("解析微信事件推送失败: %v", err)
 	}
 	return &msg, nil
+}
+
+// ============================================================
+// 微信消息加解密
+// ============================================================
+
+// getAESKey 从 EncodingAESKey 解码得到 AES Key
+// EncodingAESKey = Base64(64位) => 补充 "=" 后 Base64 解码 => 32字节 AES Key
+func getAESKey() ([]byte, error) {
+	encodingKey := common.WeChatOffiAccountEncodingAESKey
+	if encodingKey == "" {
+		return nil, fmt.Errorf("未配置 WeChatOffiAccountEncodingAESKey")
+	}
+	// 微信的 EncodingAESKey 是 43 位，Base64 解码时需补 "="
+	padded := encodingKey + "="
+	key, err := base64.StdEncoding.DecodeString(padded)
+	if err != nil {
+		return nil, fmt.Errorf("Base64解码EncodingAESKey失败: %v", err)
+	}
+	if len(key) != 32 {
+		return nil, fmt.Errorf("AES Key长度错误: 期望32字节, 实际%d字节", len(key))
+	}
+	return key, nil
+}
+
+// verifyMsgSignature 验证消息签名
+// msg_signature = sha1(sort(token, timestamp, nonce, encrypt))
+func verifyMsgSignature(timestamp, nonce, encrypt, msgSignature string) bool {
+	token := common.WeChatOffiAccountToken
+	strs := []string{token, timestamp, nonce, encrypt}
+	sort.Strings(strs)
+
+	h := sha1.New()
+	for _, s := range strs {
+		h.Write([]byte(s))
+	}
+	calculated := hex.EncodeToString(h.Sum(nil))
+	return calculated == msgSignature
+}
+
+// VerifyWeChatMsgSignature 导出的消息签名验证函数
+func VerifyWeChatMsgSignature(timestamp, nonce, encrypt, msgSignature string) bool {
+	return verifyMsgSignature(timestamp, nonce, encrypt, msgSignature)
+}
+
+// decryptWeChatMessage 解密微信加密消息
+func decryptWeChatMessage(encrypt, timestamp, nonce string) (string, error) {
+	// 验证签名（如果有 msg_signature 参数的话，这里从timestamp/nonce参数传入）
+	// 注意：签名验证在controller层通过query参数完成，这里跳过
+
+	key, err := getAESKey()
+	if err != nil {
+		return "", err
+	}
+
+	// Base64 解码密文
+	ciphertext, err := base64.StdEncoding.DecodeString(encrypt)
+	if err != nil {
+		return "", fmt.Errorf("Base64解码密文失败: %v", err)
+	}
+
+	// AES-CBC 解密
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", fmt.Errorf("创建AES cipher失败: %v", err)
+	}
+
+	if len(ciphertext) < aes.BlockSize || len(ciphertext)%aes.BlockSize != 0 {
+		return "", fmt.Errorf("密文长度不合法: %d", len(ciphertext))
+	}
+
+	iv := key[:aes.BlockSize]
+	mode := cipher.NewCBCDecrypter(block, iv)
+	plaintext := make([]byte, len(ciphertext))
+	mode.CryptBlocks(plaintext, ciphertext)
+
+	// 去除 PKCS#7 填充
+	plaintext = pkcs7Unpad(plaintext)
+
+	// 明文格式：random(16字节) + msgLen(4字节大端) + msg + appId
+	if len(plaintext) < 20 {
+		return "", fmt.Errorf("解密后明文长度不足")
+	}
+
+	msgLen := binary.BigEndian.Uint32(plaintext[16:20])
+	if int(20+msgLen) > len(plaintext) {
+		return "", fmt.Errorf("消息长度不匹配: 期望%d, 实际可用%d", msgLen, len(plaintext)-20)
+	}
+
+	msg := plaintext[20 : 20+msgLen]
+	receivedAppID := plaintext[20+msgLen:]
+
+	// 验证 appId
+	if string(receivedAppID) != common.WeChatOffiAccountAppID {
+		common.SysLog(fmt.Sprintf("微信消息解密: appId不匹配, 收到=%s, 期望=%s", string(receivedAppID), common.WeChatOffiAccountAppID))
+	}
+
+	return string(msg), nil
+}
+
+// pkcs7Unpad 去除 PKCS#7 填充
+func pkcs7Unpad(data []byte) []byte {
+	if len(data) == 0 {
+		return data
+	}
+	padding := int(data[len(data)-1])
+	if padding > aes.BlockSize || padding > len(data) {
+		return data
+	}
+	// 验证填充
+	for i := len(data) - padding; i < len(data); i++ {
+		if data[i] != byte(padding) {
+			return data
+		}
+	}
+	return data[:len(data)-padding]
 }
 
 // HandleWeChatEvent 处理微信事件
