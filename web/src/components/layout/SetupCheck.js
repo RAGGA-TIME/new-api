@@ -24,13 +24,13 @@ import { StatusContext } from '../../context/Status';
 const SetupCheck = ({ children }) => {
   const [statusState] = useContext(StatusContext);
   const location = useLocation();
-
+  const basename = import.meta.env.VITE_BUILD_BASE || '/'
   useEffect(() => {
     if (
       statusState?.status?.setup === false &&
       location.pathname !== '/setup'
     ) {
-      window.location.href = '/setup';
+      window.location.href = basename + '/setup';
     }
   }, [statusState?.status?.setup, location.pathname]);
 
