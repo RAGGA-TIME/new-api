@@ -225,7 +225,7 @@ const LoginForm = () => {
           showError('二维码已过期，请重新获取');
           return;
         }
-        if (success && scanStatus === 'confirmed') {
+        if (success && data.id) {
           stopWeChatPolling();
           if (data) {
             // 登录成功

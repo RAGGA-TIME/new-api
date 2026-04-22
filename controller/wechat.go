@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -364,7 +365,13 @@ func loginOrRegisterByWeChatId(wechatId string, c *gin.Context) {
 	} else {
 		if common.RegisterEnabled {
 			user.Username = "wechat_" + strconv.Itoa(model.GetMaxUserId()+1)
-			user.DisplayName = "WeChat User"
+			// 生成显示名：微信用户_ + wechatId随机截取 + 4位随机数字
+			suffix := wechatId
+			if len(suffix) > 6 {
+				start := rand.Intn(len(suffix) - 5)
+				suffix = suffix[start : start+6]
+			}
+			user.DisplayName = "微信用户_" + suffix + fmt.Sprintf("%04d", rand.Intn(10000))
 			user.Role = common.RoleCommonUser
 			user.Status = common.UserStatusEnabled
 
