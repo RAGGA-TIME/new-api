@@ -1001,42 +1001,42 @@ const LoginForm = () => {
     }
 
     // 旧模式：验证码方式
-    return (
-      <Modal
-        title={t('微信扫码登录')}
-        visible={showWeChatLoginModal}
-        maskClosable={true}
-        onOk={onSubmitWeChatVerificationCode}
-        onCancel={() => setShowWeChatLoginModal(false)}
-        okText={t('登录')}
-        centered={true}
-        okButtonProps={{
-          loading: wechatCodeSubmitLoading,
-        }}
-      >
-        <div className='flex flex-col items-center'>
-          <img src={status.wechat_qrcode} alt='微信二维码' className='mb-4' />
-        </div>
+    // return (
+    //   <Modal
+    //     title={t('微信扫码登录')}
+    //     visible={showWeChatLoginModal}
+    //     maskClosable={true}
+    //     onOk={onSubmitWeChatVerificationCode}
+    //     onCancel={() => setShowWeChatLoginModal(false)}
+    //     okText={t('登录')}
+    //     centered={true}
+    //     okButtonProps={{
+    //       loading: wechatCodeSubmitLoading,
+    //     }}
+    //   >
+    //     <div className='flex flex-col items-center'>
+    //       <img src={status.wechat_qrcode} alt='微信二维码' className='mb-4' />
+    //     </div>
 
-        <div className='text-center mb-4'>
-          <p>
-            {t('微信扫码关注公众号，输入「验证码」获取验证码（三分钟内有效）')}
-          </p>
-        </div>
+    //     <div className='text-center mb-4'>
+    //       <p>
+    //         {t('微信扫码关注公众号，输入「验证码」获取验证码（三分钟内有效）')}
+    //       </p>
+    //     </div>
 
-        <Form>
-          <Form.Input
-            field='wechat_verification_code'
-            placeholder={t('验证码')}
-            label={t('验证码')}
-            value={inputs.wechat_verification_code}
-            onChange={(value) =>
-              handleChange('wechat_verification_code', value)
-            }
-          />
-        </Form>
-      </Modal>
-    );
+    //     <Form>
+    //       <Form.Input
+    //         field='wechat_verification_code'
+    //         placeholder={t('验证码')}
+    //         label={t('验证码')}
+    //         value={inputs.wechat_verification_code}
+    //         onChange={(value) =>
+    //           handleChange('wechat_verification_code', value)
+    //         }
+    //       />
+    //     </Form>
+    //   </Modal>
+    // );
   };
 
   // 2FA验证弹窗
