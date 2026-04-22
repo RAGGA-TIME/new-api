@@ -298,6 +298,7 @@ func WeChatCallback(c *gin.Context) {
 		c.String(http.StatusOK, "success")
 		return
 	}
+	common.SysLog("微信回调原始请求体: " + string(body))
 
 	msg, err := service.ParseWeChatCallback(body)
 	if err != nil {
@@ -305,6 +306,7 @@ func WeChatCallback(c *gin.Context) {
 		c.String(http.StatusOK, "success")
 		return
 	}
+	common.SysLog(fmt.Sprintf("微信回调解析结果: %+v", msg))
 
 	// 处理事件
 	service.HandleWeChatEvent(msg)

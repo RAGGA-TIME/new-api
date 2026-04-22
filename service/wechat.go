@@ -304,8 +304,10 @@ func HandleWeChatEvent(msg *WeChatEventMessage) {
 	// 关注事件: EventKey = "qrscene_xxx"
 	// 扫码事件(已关注): EventKey = "xxx"
 	sceneStr, _ := strings.CutPrefix(msg.EventKey, "qrscene_")
+	common.SysLog(fmt.Sprintf("微信事件推送: EventKey=%s, sceneStr=%s", msg.EventKey, sceneStr))
 
 	if sceneStr == "" {
+		common.SysLog("微信事件推送: sceneStr为空，跳过处理")
 		return
 	}
 
