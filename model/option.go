@@ -467,6 +467,14 @@ func updateOptionMap(key string, value string) (err error) {
 		common.WeChatServerToken = value
 	case "WeChatAccountQRCodeImageURL":
 		common.WeChatAccountQRCodeImageURL = value
+	case "WeChatOffiAccountAppID":
+		common.WeChatOffiAccountAppID = value
+	case "WeChatOffiAccountAppSecret":
+		common.WeChatOffiAccountAppSecret = value
+	case "WeChatOffiAccountToken":
+		common.WeChatOffiAccountToken = value
+	case "WeChatOffiAccountEncodingAESKey":
+		common.WeChatOffiAccountEncodingAESKey = value
 	case "TelegramBotToken":
 		common.TelegramBotToken = value
 	case "TelegramBotName":

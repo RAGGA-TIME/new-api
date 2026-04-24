@@ -275,6 +275,8 @@ func InitResources() error {
 
 	// 清理旧的磁盘缓存文件
 	common.CleanupOldCacheFiles()
+	// 启动微信扫码状态清理任务
+	service.StartScanRecordCleaner()
 
 	// 初始化模型
 	model.GetPricing()
