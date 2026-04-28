@@ -64,6 +64,7 @@ const RechargeCard = ({
   selectPresetAmount,
   formatLargeNumber,
   priceRatio,
+  payWay,
   topUpCount,
   minTopUp,
   renderQuotaWithAmount,
@@ -75,7 +76,6 @@ const RechargeCard = ({
   payMethods,
   preTopUp,
   paymentLoading,
-  payWay,
   redemptionCode,
   setRedemptionCode,
   topUp,
@@ -439,7 +439,8 @@ const RechargeCard = ({
                         preset.discount ||
                         topupInfo?.discount?.[preset.value] ||
                         1.0;
-                      const originalPrice = preset.value * priceRatio;
+                      const effectiveRatio = payWay === 'wechat_pay' ? 1 : priceRatio;
+                      const originalPrice = preset.value * effectiveRatio;
                       const discountedPrice = originalPrice * discount;
                       const hasDiscount = discount < 1.0;
                       const actualPay = discountedPrice;

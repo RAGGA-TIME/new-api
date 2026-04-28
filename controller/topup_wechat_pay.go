@@ -176,7 +176,9 @@ func RequestWeChatPayAmount(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "success", "data": strconv.FormatFloat(float64(req.Amount), 'f', 2, 64)})
+	result := strconv.FormatFloat(float64(req.Amount), 'f', 2, 64)
+	logger.LogInfo(c.Request.Context(), fmt.Sprintf("微信支付 询价 amount=%d result=%q", req.Amount, result))
+	c.JSON(http.StatusOK, gin.H{"message": "success", "data": result})
 }
 
 type WeChatPayNotifyResource struct {

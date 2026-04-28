@@ -143,6 +143,32 @@ const TopUp = () => {
       : minTopUp;
   };
 
+  const getWeChatPayAmount = async (value) => {
+    if (value === undefined) {
+      value = topUpCount;
+    }
+    setAmountLoading(true);
+    try {
+      const res = await API.post('/api/user/wechat-pay/amount', {
+        amount: parseInt(value),
+      });
+      if (res !== undefined) {
+        const { message, data } = res.data;
+        if (message === 'success') {
+          console.log('gni34ghjij3g4')
+          setAmount(parseFloat(data));
+        } else {
+          setAmount(0);
+          Toast.error({ content: '错误：' + data, id: 'getAmount' });
+        }
+      }
+    } catch (err) {
+      // amount fetch failed silently
+    } finally {
+      setAmountLoading(false);
+    }
+  };
+
   const requestAmountByPayment = async (payment, value) => {
     if (payment === 'stripe') {
       return getStripeAmount(value);
@@ -152,6 +178,9 @@ const TopUp = () => {
     }
     if (typeof payment === 'string' && payment.startsWith('waffo:')) {
       return getWaffoAmount(value);
+    }
+    if (payment === 'wechat_pay') {
+      return getWeChatPayAmount(value);
     }
     return getAmount(value);
   };
@@ -201,6 +230,7 @@ const TopUp = () => {
   };
 
   const preTopUp = async (payment) => {
+    console.log(payment, 'eerer');
     if (payment === 'wechat_pay') {
       if (!enableWeChatPayTopUp) {
         showError(t('管理员未开启微信支付充值！'));
@@ -213,6 +243,7 @@ const TopUp = () => {
       setPayWay(payment);
       setPaymentLoading(true);
       try {
+        await getWeChatPayAmount();
         const res = await API.post('/api/user/wechat-pay/pay', {
           amount: parseInt(topUpCount),
         });
@@ -905,10 +936,13 @@ const TopUp = () => {
     setTopUpCount(preset.value);
     setSelectedPreset(preset.value);
 
-    // 计算实际支付金额，考虑折扣
+    // 计算实际支付金额，考虑折扣和支付方式
     const discount = preset.discount || topupInfo.discount[preset.value] || 1.0;
-    const discountedAmount = preset.value * priceRatio * discount;
-    setAmount(discountedAmount);
+    if (payWay === 'wechat_pay') {
+      setAmount(preset.value * discount);
+    } else {
+      setAmount(preset.value * priceRatio * discount);
+    }
   };
 
   // 格式化大数字显示
@@ -1021,7 +1055,7 @@ const TopUp = () => {
           topUpCount={topUpCount}
           minTopUp={minTopUp}
           renderQuotaWithAmount={renderQuotaWithAmount}
-          getAmount={getAmount}
+          getAmount={requestAmountByPayment.bind(null, payWay)}
           setTopUpCount={setTopUpCount}
           setSelectedPreset={setSelectedPreset}
           renderAmount={renderAmount}
