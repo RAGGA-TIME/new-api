@@ -98,3 +98,13 @@ func isEpayWebhookConfigured() bool {
 func isEpayWebhookEnabled() bool {
 	return isEpayTopUpEnabled()
 }
+
+func isWeChatPayTopUpEnabled() bool {
+	return strings.TrimSpace(setting.WeChatPayAppID) != "" &&
+		strings.TrimSpace(setting.WeChatPayMchID) != "" &&
+		strings.TrimSpace(setting.WeChatPayAPIv3Key) != ""
+}
+
+func isWeChatPayWebhookEnabled() bool {
+	return isWeChatPayTopUpEnabled()
+}

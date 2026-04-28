@@ -39,6 +39,7 @@ import InvitationCard from './InvitationCard';
 import TransferModal from './modals/TransferModal';
 import PaymentConfirmModal from './modals/PaymentConfirmModal';
 import TopupHistoryModal from './modals/TopupHistoryModal';
+import WeChatPayQRCodeModal from './modals/WeChatPayQRCodeModal';
 
 const TopUp = () => {
   const { t } = useTranslation();
@@ -77,6 +78,14 @@ const TopUp = () => {
   const [waffoMinTopUp, setWaffoMinTopUp] = useState(1);
   const [enableWaffoPancakeTopUp, setEnableWaffoPancakeTopUp] = useState(false);
   const [waffoPancakeMinTopUp, setWaffoPancakeMinTopUp] = useState(1);
+
+  // 微信支付相关状态
+  const [enableWeChatPayTopUp, setEnableWeChatPayTopUp] = useState(false);
+  const [wechatPayMinTopUp, setWechatPayMinTopUp] = useState(1);
+  const [wechatPayQrCodeVisible, setWechatPayQrCodeVisible] = useState(false);
+  const [wechatPayCodeUrl, setWechatPayCodeUrl] = useState('');
+  const [wechatPayTradeNo, setWechatPayTradeNo] = useState('');
+  const [wechatPayAmount, setWechatPayAmount] = useState(0);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [open, setOpen] = useState(false);
@@ -192,6 +201,42 @@ const TopUp = () => {
   };
 
   const preTopUp = async (payment) => {
+    if (payment === 'wechat_pay') {
+      if (!enableWeChatPayTopUp) {
+        showError(t('管理员未开启微信支付充值！'));
+        return;
+      }
+      if (topUpCount < wechatPayMinTopUp) {
+        showError(t('充值金额不能小于') + wechatPayMinTopUp + t('元'));
+        return;
+      }
+      setPayWay(payment);
+      setPaymentLoading(true);
+      try {
+        const res = await API.post('/api/user/wechat-pay/pay', {
+          amount: parseInt(topUpCount),
+        });
+        if (res !== undefined) {
+          const { message, data } = res.data;
+          if (message === 'success') {
+            setWechatPayCodeUrl(data.code_url);
+            setWechatPayTradeNo(data.trade_no);
+            setWechatPayAmount(topUpCount);
+            setWechatPayQrCodeVisible(true);
+          } else {
+            const errorMsg =
+              typeof data === 'string' ? data : message || t('支付失败');
+            showError(errorMsg);
+          }
+        }
+      } catch (err) {
+        showError(t('支付请求失败'));
+      } finally {
+        setPaymentLoading(false);
+      }
+      return;
+    }
+
     if (payment === 'stripe') {
       if (!enableStripeTopUp) {
         showError(t('管理员未开启Stripe充值！'));
@@ -639,6 +684,8 @@ const TopUp = () => {
           const enableWaffoTopUp = data.enable_waffo_topup || false;
           const enableWaffoPancakeTopUp =
             data.enable_waffo_pancake_topup || false;
+          const enableWeChatPayTopUp =
+            data.enable_wechat_pay_topup || false;
           const minTopUpValue = enableOnlineTopUp
             ? data.min_topup
             : enableStripeTopUp
@@ -647,6 +694,8 @@ const TopUp = () => {
                 ? data.waffo_min_topup
                 : enableWaffoPancakeTopUp
                   ? data.waffo_pancake_min_topup
+                  : enableWeChatPayTopUp
+                    ? data.wechat_pay_min_topup
                 : 1;
           setEnableOnlineTopUp(enableOnlineTopUp);
           setEnableStripeTopUp(enableStripeTopUp);
@@ -656,6 +705,8 @@ const TopUp = () => {
           setWaffoMinTopUp(data.waffo_min_topup || 1);
           setEnableWaffoPancakeTopUp(enableWaffoPancakeTopUp);
           setWaffoPancakeMinTopUp(data.waffo_pancake_min_topup || 1);
+          setEnableWeChatPayTopUp(enableWeChatPayTopUp);
+          setWechatPayMinTopUp(data.wechat_pay_min_topup || 1);
           setMinTopUp(minTopUpValue);
           setTopUpCount(minTopUpValue);
 
@@ -905,6 +956,16 @@ const TopUp = () => {
         discountRate={topupInfo?.discount?.[topUpCount] || 1.0}
       />
 
+      {/* 微信支付二维码模态框 */}
+      <WeChatPayQRCodeModal
+        visible={wechatPayQrCodeVisible}
+        onCancel={() => setWechatPayQrCodeVisible(false)}
+        codeUrl={wechatPayCodeUrl}
+        tradeNo={wechatPayTradeNo}
+        amount={wechatPayAmount}
+        onSuccess={getUserQuota}
+      />
+
       {/* 充值账单模态框 */}
       <TopupHistoryModal
         visible={openHistory}
@@ -951,6 +1012,7 @@ const TopUp = () => {
           creemPreTopUp={creemPreTopUp}
           enableWaffoTopUp={enableWaffoTopUp}
           enableWaffoPancakeTopUp={enableWaffoPancakeTopUp}
+          enableWeChatPayTopUp={enableWeChatPayTopUp}
           presetAmounts={presetAmounts}
           selectedPreset={selectedPreset}
           selectPresetAmount={selectPresetAmount}
