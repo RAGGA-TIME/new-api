@@ -26,9 +26,11 @@ Variables registered via `common.OptionMap`:
 
 Enable check: `isWeChatPayTopUpEnabled()` returns true when AppID, MchID, and APIv3Key are all non-empty.
 
+**MinTopUp unit is CNY (人民币)**. This differs from Stripe/epay where MinTopUp is in USD or quota units. Since WeChat Pay settles in CNY, using CNY as the unit is more intuitive.
+
 ### Payment Method Constant
 
-Add to `model/topup.go`:
+Already added to `model/topup.go`:
 
 ```go
 PaymentMethodWeChatPay = "wechat_pay"
@@ -38,15 +40,20 @@ PaymentMethodWeChatPay = "wechat_pay"
 
 #### `RequestWeChatPayPay` — `POST /api/user/wechat-pay/pay`
 
-1. Validate amount >= min top-up
-2. Calculate `payMoney` in CNY using `getPayMoney` logic
+1. Validate amount >= WeChatPayMinTopUp (CNY)
+2. Calculate `payMoney` in CNY:
+   - `payMoney = amount` (amount is already in CNY from frontend)
+   - Create TopUp record: `Amount = int64(amount)` (CNY cents), `Money = float64(amount)` (CNY yuan)
+   - The `Amount` field stores the CNY amount (in the same unit as the frontend input, i.e. yuan), and quota calculation in `RechargeWeChatPay` uses `Amount * QuotaPerUnit` to convert to internal quota units
 3. Generate `tradeNo`, create `TopUp` record with `PaymentMethod = "wechat_pay"`
-4. Call WeChat Pay v3 Native API (`POST /v3/pay/transactions/native`)
+4. Call WeChat Pay v3 Native API (`POST /v3/pay/transactions/native`) with `time_expire` set to 5 minutes from now
 5. Return `{ code_url: "weixin://wxpay/..." }`
+
+**Flow change: No PaymentConfirmModal.** The frontend calls this endpoint directly when the user clicks the WeChat Pay button, then opens the QR code modal with the returned `code_url`.
 
 #### `RequestWeChatPayAmount` — `POST /api/user/wechat-pay/amount`
 
-Same pattern as Stripe amount endpoint — returns CNY amount for display.
+Returns CNY amount for display. Since the input is already in CNY, this is a pass-through that returns the input amount formatted.
 
 #### `WeChatPayWebhook` — `POST /api/wechat-pay/webhook`
 
@@ -62,11 +69,13 @@ Same pattern as Stripe amount endpoint — returns CNY amount for display.
 
 ### Recharge Logic (`model/topup.go`)
 
-New `RechargeWeChatPay(tradeNo string, callerIp string) error` function:
+Already implemented `RechargeWeChatPay(tradeNo string, callerIp string) error`:
 
 - Transaction: lock order by trade_no → verify status pending → mark success → increase user quota
 - Same pattern as `RechargeWaffo`
 - Log outside transaction
+
+**Quota calculation**: `quotaToAdd = int(decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart())`
 
 ### TopUp Info Integration (`controller/topup.go`)
 
@@ -88,9 +97,29 @@ GET  /api/user/wechat-pay/status?trade_no=xxx   → GetWeChatPayOrderStatus (Use
 
 Register new WeChat Pay variables so they can be read/written via `/api/option/`.
 
+Sensitive fields (`WeChatPayAPIv3Key`, `WeChatPayPrivateKey`) must NOT be echoed to the frontend — follow the same pattern as Stripe's `StripeApiSecret` handling.
+
 ### Webhook Availability
 
-Add WeChat Pay to the webhook availability guard (similar to existing Stripe/Creem/Waffo pattern).
+Add WeChat Pay to the webhook availability guard in `controller/payment_webhook_availability.go`:
+
+```go
+func isWeChatPayTopUpEnabled() bool {
+    return strings.TrimSpace(setting.WeChatPayAppID) != "" &&
+        strings.TrimSpace(setting.WeChatPayMchID) != "" &&
+        strings.TrimSpace(setting.WeChatPayAPIv3Key) != ""
+}
+
+func isWeChatPayWebhookEnabled() bool {
+    return isWeChatPayTopUpEnabled()
+}
+```
+
+### Order Expiry
+
+Backend sets `time_expire` to 5 minutes from order creation when calling WeChat Native API. This causes the QR code to expire on WeChat's side. After 5 minutes, the order transitions to `CLOSED` state on WeChat's side.
+
+Frontend simultaneously stops polling after 5 minutes and shows an "expired" message. The `GetWeChatPayOrderStatus` endpoint can check if the order has passed its expiry time and return `expired` status.
 
 ## Frontend
 
@@ -103,15 +132,15 @@ New file: `web/src/pages/Setting/Payment/SettingsPaymentGatewayWeChatPay.jsx`
 - Banner showing webhook callback URL: `{ServerAddress}/api/wechat-pay/webhook`
 - Submit via `/api/option/` API (same as Stripe config page)
 
-Integration: Add to `SettingsPaymentGateway.jsx` or the payment settings index.
+Integration: Add new tab in `web/src/components/settings/PaymentSetting.jsx`.
 
 ### TopUp Page Changes
 
 In `web/src/components/topup/index.jsx`:
 - Add `enableWeChatPayTopUp` state
 - Add `wechatPayMinTopUp` state
-- Handle `wechat_pay` type in `preTopUp` — call `/api/user/wechat-pay/pay` instead of showing confirm modal
-- On success, open WeChatPayQRCodeModal with the returned `code_url`
+- Handle `wechat_pay` type in `preTopUp` — **skip PaymentConfirmModal**, directly call `/api/user/wechat-pay/pay`
+- On success, open WeChatPayQRCodeModal with the returned `code_url` and `trade_no`
 
 ### QR Code Modal
 
@@ -120,18 +149,20 @@ New file: `web/src/components/topup/modals/WeChatPayQRCodeModal.jsx`
 - Display QR code generated from `code_url` using `qrcode.react` library
 - Poll `GET /api/user/wechat-pay/status?trade_no=xxx` every 3 seconds
 - On status `success`: close modal, refresh user quota, show success toast
-- On timeout (5 minutes): stop polling, show expired message
+- On timeout (5 minutes): stop polling, show expired message with "重新支付" button
 - Allow manual close
+- Show payment amount and order info in the modal
 
 ### RechargeCard Integration
 
 In `web/src/components/topup/RechargeCard.jsx`:
 - Add WeChat Pay button with `SiWechat` icon (green)
 - Handle `wechat_pay` type in payment method rendering
+- WeChat Pay button should be shown regardless of `enableOnlineTopUp` flag (like Stripe/Waffo)
 
 ### PaymentConfirmModal
 
-Add `wechat_pay` icon handling alongside existing alipay/wxpay/stripe.
+Add `wechat_pay` icon handling alongside existing alipay/wxpay/stripe. Note: WeChat Pay skips this modal, but the icon mapping is needed for the payMethods list display.
 
 ### Dependency
 
@@ -141,9 +172,9 @@ Install `qrcode.react` via bun in `web/` directory.
 
 ```
 User clicks "微信支付"
-  → POST /api/user/wechat-pay/pay { amount }
-  → Backend: create TopUp order + call WeChat Native API
-  → Return code_url
+  → Frontend calls POST /api/user/wechat-pay/pay { amount (CNY) }
+  → Backend: create TopUp order + call WeChat Native API (with time_expire=5min)
+  → Return code_url + trade_no
   → Frontend: open QRCodeModal with code_url
   → User scans QR with WeChat app, pays
   → WeChat sends POST /api/wechat-pay/webhook
@@ -159,3 +190,4 @@ User clicks "微信支付"
 - Sensitive config fields not echoed to frontend
 - Transaction-level locking on order processing (prevents double-charge)
 - Same CSRF/auth middleware as other payment endpoints
+- time_expire prevents stale QR codes from being scanned after 5 minutes
