@@ -60,6 +60,7 @@ const TopUp = () => {
     statusState?.status?.enable_online_topup || false,
   );
   const [priceRatio, setPriceRatio] = useState(statusState?.status?.price || 1);
+  const [wechatPayUnitPrice, setWechatPayUnitPrice] = useState(statusState?.status?.wechat_pay_unit_price || 1);
 
   const [enableStripeTopUp, setEnableStripeTopUp] = useState(
     statusState?.status?.enable_stripe_topup || false,
@@ -155,7 +156,6 @@ const TopUp = () => {
       if (res !== undefined) {
         const { message, data } = res.data;
         if (message === 'success') {
-          console.log('gni34ghjij3g4')
           setAmount(parseFloat(data));
         } else {
           setAmount(0);
@@ -230,7 +230,6 @@ const TopUp = () => {
   };
 
   const preTopUp = async (payment) => {
-    console.log(payment, 'eerer');
     if (payment === 'wechat_pay') {
       if (!enableWeChatPayTopUp) {
         showError(t('管理员未开启微信支付充值！'));
@@ -848,6 +847,7 @@ const TopUp = () => {
       // setTopUpCount(minTopUpValue);
       setTopUpLink(statusState.status.top_up_link || '');
       setPriceRatio(statusState.status.price || 1);
+      setWechatPayUnitPrice(statusState.status.wechat_pay_unit_price || 1);
 
       setStatusLoading(false);
     }
@@ -939,7 +939,7 @@ const TopUp = () => {
     // 计算实际支付金额，考虑折扣和支付方式
     const discount = preset.discount || topupInfo.discount[preset.value] || 1.0;
     if (payWay === 'wechat_pay') {
-      setAmount(preset.value * discount);
+      setAmount(preset.value * wechatPayUnitPrice * discount);
     } else {
       setAmount(preset.value * priceRatio * discount);
     }
@@ -1052,6 +1052,7 @@ const TopUp = () => {
           selectPresetAmount={selectPresetAmount}
           formatLargeNumber={formatLargeNumber}
           priceRatio={priceRatio}
+          wechatPayUnitPrice={wechatPayUnitPrice}
           topUpCount={topUpCount}
           minTopUp={minTopUp}
           renderQuotaWithAmount={renderQuotaWithAmount}

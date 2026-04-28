@@ -65,6 +65,7 @@ const PaymentSetting = () => {
     WeChatPayAppID: '',
     WeChatPayMchID: '',
     WeChatPaySerialNo: '',
+    WeChatPayUnitPrice: 1.0,
     WeChatPayMinTopUp: 1,
   });
 
@@ -116,6 +117,7 @@ const PaymentSetting = () => {
           case 'StripeMinTopUp':
           case 'WaffoPancakeUnitPrice':
           case 'WaffoPancakeMinTopUp':
+          case 'WeChatPayUnitPrice':
           case 'WeChatPayMinTopUp':
             newInputs[item.key] = parseFloat(item.value);
             break;

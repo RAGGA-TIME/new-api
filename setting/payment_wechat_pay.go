@@ -8,5 +8,6 @@ var (
 	WeChatPaySerialNo    string
 	WeChatPayPublicKeyID string
 	WeChatPayPublicKey   string
+	WeChatPayUnitPrice   float64 = 1.0
 	WeChatPayMinTopUp    int     = 1
 )

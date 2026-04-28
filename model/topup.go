@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
@@ -340,10 +341,20 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 
 		// 计算应充值额度：
 		// - Stripe 订单：Money 代表经分组倍率换算后的美元数量，直接 * QuotaPerUnit
+		// - 微信支付订单：Amount 为人民币金额，需按单价换算为美元后 * QuotaPerUnit
 		// - 其他订单（如易支付）：Amount 为美元数量，* QuotaPerUnit
 		if topUp.PaymentMethod == PaymentMethodStripe {
 			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 			quotaToAdd = int(decimal.NewFromFloat(topUp.Money).Mul(dQuotaPerUnit).IntPart())
+		} else if topUp.PaymentMethod == PaymentMethodWeChatPay {
+			dAmountCNY := decimal.NewFromInt(topUp.Amount)
+			dUnitPrice := decimal.NewFromFloat(setting.WeChatPayUnitPrice)
+			if dUnitPrice.IsZero() {
+				return errors.New("微信支付单价未配置")
+			}
+			dAmountUSD := dAmountCNY.Div(dUnitPrice)
+			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+			quotaToAdd = int(dAmountUSD.Mul(dQuotaPerUnit).IntPart())
 		} else {
 			dAmount := decimal.NewFromInt(topUp.Amount)
 			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
@@ -610,8 +621,13 @@ func RechargeWeChatPay(tradeNo string, callerIp string) error {
 		}
 
 		dAmount := decimal.NewFromInt(topUp.Amount)
+		dUnitPrice := decimal.NewFromFloat(setting.WeChatPayUnitPrice)
+		if dUnitPrice.IsZero() {
+			return errors.New("微信支付单价未配置")
+		}
+		dAmountUSD := dAmount.Div(dUnitPrice)
 		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-		quotaToAdd = int(dAmount.Mul(dQuotaPerUnit).IntPart())
+		quotaToAdd = int(dAmountUSD.Mul(dQuotaPerUnit).IntPart())
 		if quotaToAdd <= 0 {
 			return errors.New("无效的充值额度")
 		}

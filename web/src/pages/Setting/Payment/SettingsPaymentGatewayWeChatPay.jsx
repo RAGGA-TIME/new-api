@@ -21,6 +21,7 @@ export default function SettingsPaymentGatewayWeChatPay(props) {
     WeChatPaySerialNo: '',
     WeChatPayPublicKeyID: '',
     WeChatPayPublicKey: '',
+    WeChatPayUnitPrice: 1.0,
     WeChatPayMinTopUp: 1,
   });
   const [originInputs, setOriginInputs] = useState({});
@@ -36,6 +37,10 @@ export default function SettingsPaymentGatewayWeChatPay(props) {
         WeChatPaySerialNo: props.options.WeChatPaySerialNo || '',
         WeChatPayPublicKeyID: props.options.WeChatPayPublicKeyID || '',
         WeChatPayPublicKey: '',
+        WeChatPayUnitPrice:
+          props.options.WeChatPayUnitPrice !== undefined
+            ? parseFloat(props.options.WeChatPayUnitPrice)
+            : 1.0,
         WeChatPayMinTopUp:
           props.options.WeChatPayMinTopUp !== undefined
             ? parseFloat(props.options.WeChatPayMinTopUp)
@@ -81,6 +86,9 @@ export default function SettingsPaymentGatewayWeChatPay(props) {
       }
       if (inputs.WeChatPayPublicKey && inputs.WeChatPayPublicKey !== '') {
         options.push({ key: 'WeChatPayPublicKey', value: inputs.WeChatPayPublicKey });
+      }
+      if (inputs.WeChatPayUnitPrice !== undefined && inputs.WeChatPayUnitPrice !== null) {
+        options.push({ key: 'WeChatPayUnitPrice', value: inputs.WeChatPayUnitPrice.toString() });
       }
       if (inputs.WeChatPayMinTopUp !== undefined && inputs.WeChatPayMinTopUp !== null) {
         options.push({ key: 'WeChatPayMinTopUp', value: inputs.WeChatPayMinTopUp.toString() });
@@ -207,6 +215,15 @@ export default function SettingsPaymentGatewayWeChatPay(props) {
             gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
             style={{ marginTop: 16 }}
           >
+            <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+              <Form.InputNumber
+                field='WeChatPayUnitPrice'
+                precision={2}
+                label={t('充值汇率（x元/美金）')}
+                placeholder={t('例如：1，就是1元/美金')}
+                extraText={t('1 美元对应的人民币金额，设为 1 表示 1:1')}
+              />
+            </Col>
             <Col xs={24} sm={24} md={8} lg={8} xl={8}>
               <Form.InputNumber
                 field='WeChatPayMinTopUp'
