@@ -136,7 +136,8 @@ func RequestWeChatPayPay(c *gin.Context) {
 	topUp := &model.TopUp{
 		UserId:        id,
 		Amount:        req.Amount,
-		Money:         float64(req.Amount),
+		//	这里先写死0.02测试
+		Money:         float64(0.02),
 		TradeNo:       tradeNo,
 		PaymentMethod: model.PaymentMethodWeChatPay,
 		CreateTime:    time.Now().Unix(),
