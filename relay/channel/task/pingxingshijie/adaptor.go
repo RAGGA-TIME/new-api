@@ -874,10 +874,6 @@ func (a *TaskAdaptor) ConvertToOpenAIAsyncImage(originTask *model.Task) ([]byte,
 	if err != nil {
 		return nil, err
 	}
-	var img imageResponseTask
-	if err := common.Unmarshal(inner, &img); err != nil {
-		return nil, errors.Wrap(err, "unmarshal image task data failed")
-	}
 	out := map[string]any{
 		"object":     "pingxingshijie.image.generation.task",
 		"id":         originTask.TaskID,
@@ -888,14 +884,23 @@ func (a *TaskAdaptor) ConvertToOpenAIAsyncImage(originTask *model.Task) ([]byte,
 		"created_at": originTask.CreatedAt,
 		"updated_at": originTask.UpdatedAt,
 	}
+	if ux := jsonAnyFromBytes(originTask.Data); ux != nil {
+		out["upstream"] = ux
+	}
+
+	var img imageResponseTask
+	if err := common.Unmarshal(inner, &img); err != nil {
+		if upstreamID := extractImageCreateTaskID(inner); upstreamID != "" {
+			out["upstream_task_id"] = upstreamID
+			return common.Marshal(out)
+		}
+		return nil, errors.Wrap(err, "unmarshal image task data failed")
+	}
 	if u := img.resultImageURL(); u != "" {
 		out["url"] = u
 	}
 	if strings.EqualFold(img.Status, "failed") || strings.EqualFold(img.Status, "failure") {
 		out["error"] = map[string]any{"message": img.Error.Message, "code": img.Error.Code}
-	}
-	if ux := jsonAnyFromBytes(originTask.Data); ux != nil {
-		out["upstream"] = ux
 	}
 	return common.Marshal(out)
 }
