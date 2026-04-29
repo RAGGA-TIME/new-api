@@ -37,9 +37,9 @@ func TestConvertToRequestPayload_DraftTaskClearsDraftAndSkipsTopLevelSeconds(t *
 					"draft_task": map[string]interface{}{"id": "cgt-20260416103233-xccct"},
 				},
 			},
-			"draft":        true,
-			"resolution":   "1080p",
-			"watermark":    false,
+			"draft":      true,
+			"resolution": "1080p",
+			"watermark":  false,
 		},
 	}
 	body, err := a.convertToRequestPayload(&req)
@@ -73,7 +73,7 @@ func TestDraftTaskUpscale_UpstreamJSONShape(t *testing.T) {
 				},
 			},
 			"watermark":         false,
-			"resolution":      "720p",
+			"resolution":        "720p",
 			"return_last_frame": true,
 		},
 	}

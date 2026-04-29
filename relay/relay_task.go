@@ -214,7 +214,9 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	// 7. 混元视频并发检查（在价格计算和预扣费之后）
 	channelType := c.GetInt(string(constant.ContextKeyChannelType))
 	if channelType == constant.ChannelTypeHunyuanVideo {
-		if concurrencyChecker, ok := adaptor.(interface{ CheckConcurrency(*relaycommon.RelayInfo) bool }); ok {
+		if concurrencyChecker, ok := adaptor.(interface {
+			CheckConcurrency(*relaycommon.RelayInfo) bool
+		}); ok {
 			if !concurrencyChecker.CheckConcurrency(info) {
 				// 超过并发限制，创建等待任务（已预扣费）
 				return createWaitingTask(c, info, platform, adaptor)
@@ -637,7 +639,7 @@ func createWaitingTask(c *gin.Context, info *relaycommon.RelayInfo, platform con
 	task.Progress = "0%"
 	task.Quota = info.PriceData.Quota // 使用已计算的额度
 	task.Action = info.Action         // 设置任务类型（用于日志显示）
-	task.FailReason = "等待执行：并发限制" // 设置详情说明
+	task.FailReason = "等待执行：并发限制"     // 设置详情说明
 
 	// 保存请求数据，以便后续提交时使用
 	taskReq, err := relaycommon.GetTaskRequest(c)

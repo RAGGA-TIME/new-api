@@ -756,9 +756,9 @@ func submitWaitingHunyuanTask(ctx context.Context, channelId int, task *model.Ta
 	respBody, _ := io.ReadAll(resp.Body)
 	var wrapper struct {
 		Response struct {
-			JobId     string `json:"JobId"`
-			Code      int    `json:"Code,omitempty"`
-			Message   string `json:"Message,omitempty"`
+			JobId   string `json:"JobId"`
+			Code    int    `json:"Code,omitempty"`
+			Message string `json:"Message,omitempty"`
 		} `json:"Response"`
 	}
 	if err := common.Unmarshal(respBody, &wrapper); err != nil {

@@ -879,12 +879,12 @@ func (a *TaskAdaptor) ConvertToOpenAIAsyncImage(originTask *model.Task) ([]byte,
 		return nil, errors.Wrap(err, "unmarshal image task data failed")
 	}
 	out := map[string]any{
-		"object":    "pingxingshijie.image.generation.task",
-		"id":        originTask.TaskID,
-		"task_id":   originTask.TaskID,
-		"status":    originTask.Status.ToVideoStatus(),
-		"progress":  originTask.Progress,
-		"model":     originTask.Properties.OriginModelName,
+		"object":     "pingxingshijie.image.generation.task",
+		"id":         originTask.TaskID,
+		"task_id":    originTask.TaskID,
+		"status":     originTask.Status.ToVideoStatus(),
+		"progress":   originTask.Progress,
+		"model":      originTask.Properties.OriginModelName,
 		"created_at": originTask.CreatedAt,
 		"updated_at": originTask.UpdatedAt,
 	}
