@@ -48,6 +48,7 @@ import {
 import { IconGift } from '@douyinfe/semi-icons';
 import { useMinimumLoadingTime } from '../../hooks/common/useMinimumLoadingTime';
 import { getCurrencyConfig } from '../../helpers/render';
+import { marked } from 'marked';
 import SubscriptionPlansCard from './SubscriptionPlansCard';
 
 const { Text } = Typography;
@@ -754,9 +755,7 @@ const RechargeCard = ({
         centered
         width={'80%'}
       >
-        <div style={{ whiteSpace: 'pre-wrap', maxHeight: '60vh', overflowY: 'auto' }}>
-          {topUpAgreement}
-        </div>
+        <div style={{ maxHeight: '60vh', overflowY: 'auto' }} dangerouslySetInnerHTML={{ __html: topUpAgreement || '' }} />
       </Modal>
     </Card>
   );
