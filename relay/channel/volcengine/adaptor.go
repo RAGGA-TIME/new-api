@@ -248,10 +248,10 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 		switch info.RelayMode {
 		case constant.RelayModeChatCompletions:
 			return baseTrim + "/v2/chat/completions", nil
-		case constant.RelayModeEmbeddings:
-			return baseTrim + "/v1/embeddings", nil
-		case constant.RelayModeRerank:
-			return baseTrim + "/v1/rerank", nil
+		case constant.RelayModeImagesGenerations:
+			return baseTrim + "/v2/image/generations", nil
+		default:
+			return "", fmt.Errorf("unsupported PingXingShiJie relay mode: %d", info.RelayMode)
 		}
 	}
 	specialPlan, hasSpecialPlan := channelconstant.ChannelSpecialBases[baseUrl]
