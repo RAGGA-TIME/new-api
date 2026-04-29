@@ -120,3 +120,61 @@ func TestDraftTaskUpscale_UpstreamJSONShape(t *testing.T) {
 		t.Fatalf("draft_task: %#v", item["draft_task"])
 	}
 }
+
+func TestConvertToRequestPayload_TopLevelSeedanceContentAndParams(t *testing.T) {
+	const payload = `{
+		"model": "doubao-seedance-1-5-pro-251215",
+		"prompt": "首帧过渡到尾帧",
+		"content": [
+			{"type":"text","text":"首帧过渡到尾帧"},
+			{"type":"image_url","image_url":{"url":"https://example.com/first.jpg"},"role":"first_frame"},
+			{"type":"image_url","image_url":{"url":"https://example.com/last.jpg"},"role":"last_frame"}
+		],
+		"generate_audio": true,
+		"ratio": "adaptive",
+		"duration": 6,
+		"watermark": false,
+		"resolution": "720p"
+	}`
+	var req relaycommon.TaskSubmitReq
+	if err := common.UnmarshalJsonStr(payload, &req); err != nil {
+		t.Fatal(err)
+	}
+	body, err := (&TaskAdaptor{}).convertToRequestPayload(&req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := common.Marshal(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]interface{}
+	if err := common.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	content, ok := got["content"].([]interface{})
+	if !ok || len(content) != 3 {
+		t.Fatalf("content: got %#v in %s", got["content"], string(data))
+	}
+	for i, wantRole := range []string{"first_frame", "last_frame"} {
+		item, ok := content[i+1].(map[string]interface{})
+		if !ok || item["role"] != wantRole {
+			t.Fatalf("content[%d] role: got %#v want %q", i+1, content[i+1], wantRole)
+		}
+	}
+	if got["duration"] != float64(6) {
+		t.Fatalf("duration: got %#v", got["duration"])
+	}
+	if got["resolution"] != "720p" {
+		t.Fatalf("resolution: got %#v", got["resolution"])
+	}
+	if got["ratio"] != "adaptive" {
+		t.Fatalf("ratio: got %#v", got["ratio"])
+	}
+	if got["watermark"] != false {
+		t.Fatalf("watermark: got %#v", got["watermark"])
+	}
+	if got["generate_audio"] != true {
+		t.Fatalf("generate_audio: got %#v", got["generate_audio"])
+	}
+}

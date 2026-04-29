@@ -617,6 +617,9 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 	if err := taskcommon.UnmarshalMetadata(metadata, &r); err != nil {
 		return nil, errors.Wrap(err, "unmarshal metadata failed")
 	}
+	if r.Resolution == "" {
+		r.Resolution = req.Resolution
+	}
 
 	// Draft ID upscale (draft_task): upstream body is content + resolution (+ optional flags like watermark).
 	// No top-level seconds -> duration merge here. If client ever sets metadata "draft" (bool), clear it —
@@ -630,13 +633,16 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 
 	if sec, _ := strconv.Atoi(req.Seconds); sec > 0 {
 		r.Duration = lo.ToPtr(dto.IntValue(sec))
+	} else if req.Duration > 0 && r.Duration == nil {
+		r.Duration = lo.ToPtr(dto.IntValue(req.Duration))
 	}
 
-	r.Content = lo.Reject(r.Content, func(c ContentItem, _ int) bool { return c.Type == "text" })
-	r.Content = append(r.Content, ContentItem{
-		Type: "text",
-		Text: req.Prompt,
-	})
+	if !contentHasText(r.Content) {
+		r.Content = append(r.Content, ContentItem{
+			Type: "text",
+			Text: req.Prompt,
+		})
+	}
 
 	return &r, nil
 }
@@ -644,6 +650,15 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 func contentHasDraftTask(items []ContentItem) bool {
 	for _, c := range items {
 		if c.Type == "draft_task" {
+			return true
+		}
+	}
+	return false
+}
+
+func contentHasText(items []ContentItem) bool {
+	for _, c := range items {
+		if c.Type == "text" {
 			return true
 		}
 	}
