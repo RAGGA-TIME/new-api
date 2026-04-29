@@ -121,7 +121,7 @@ var ChannelBaseURLs = []string{
 	"https://api.replicate.com",                 //56
 	"https://chatgpt.com",                       //57
 	"https://vclm.tencentcloudapi.com",          //58 - 混元生视频
-	"https://ark.cn-beijing.volces.com",         //59 PingXingShiJie
+	"https://api.pingxingshijie.cn",             //59 PingXingShiJie
 }
 
 var ChannelTypeNames = map[int]string{
