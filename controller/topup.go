@@ -131,8 +131,9 @@ func GetTopUpInfo(c *gin.Context) {
 		"waffo_pancake_min_topup": setting.WaffoPancakeMinTopUp,
 		"wechat_pay_min_topup":    setting.WeChatPayMinTopUp,
 		"wechat_pay_unit_price":  setting.WeChatPayUnitPrice,
-		"amount_options":          operation_setting.GetPaymentSetting().AmountOptions,
-		"discount":                operation_setting.GetPaymentSetting().AmountDiscount,
+		"amount_options":     operation_setting.GetPaymentSetting().AmountOptions,
+		"discount":           operation_setting.GetPaymentSetting().AmountDiscount,
+		"top_up_agreement":   common.TopUpAgreement,
 	}
 	common.ApiSuccess(c, data)
 }

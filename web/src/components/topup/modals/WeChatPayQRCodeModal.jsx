@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Modal, Typography, Button, Space } from '@douyinfe/semi-ui';
 import { QRCodeSVG } from 'qrcode.react';
-import { API, showSuccess } from '../../../helpers';
+import { API, showError, showSuccess } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle, Clock, XCircle } from 'lucide-react';
 
@@ -18,40 +18,14 @@ const WeChatPayQRCodeModal = ({
   const { t } = useTranslation();
   const [status, setStatus] = useState('pending'); // pending | success | expired
   const [countdown, setCountdown] = useState(300); // 5 minutes
+  const [checking, setChecking] = useState(false);
   const timerRef = useRef(null);
-  const pollRef = useRef(null);
-
-  const checkStatus = useCallback(async () => {
-    if (!tradeNo) return;
-    try {
-      const res = await API.get(
-        `/api/user/wechat-pay/status?trade_no=${tradeNo}`,
-      );
-      const { message, data } = res.data;
-      if (message === 'success') {
-        if (data.status === 'success') {
-          setStatus('success');
-          showSuccess(t('充值成功'));
-          onSuccess?.();
-          return;
-        }
-        if (data.status === 'expired') {
-          setStatus('expired');
-          return;
-        }
-      }
-    } catch (e) {
-      // silently ignore
-    }
-  }, [tradeNo, onSuccess, t]);
 
   useEffect(() => {
     if (!visible || !tradeNo) return;
 
     setStatus('pending');
     setCountdown(300);
-
-    pollRef.current = setInterval(checkStatus, 3000);
 
     timerRef.current = setInterval(() => {
       setCountdown((prev) => {
@@ -64,15 +38,11 @@ const WeChatPayQRCodeModal = ({
     }, 1000);
 
     return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [visible, tradeNo, checkStatus]);
+  }, [visible, tradeNo]);
 
   useEffect(() => {
-    if ((status === 'success' || status === 'expired') && pollRef.current) {
-      clearInterval(pollRef.current);
-    }
     if ((status === 'success' || status === 'expired') && timerRef.current) {
       clearInterval(timerRef.current);
     }
@@ -85,9 +55,36 @@ const WeChatPayQRCodeModal = ({
   };
 
   const handleClose = () => {
-    if (pollRef.current) clearInterval(pollRef.current);
     if (timerRef.current) clearInterval(timerRef.current);
     onCancel?.();
+  };
+
+  const handlePaymentComplete = async () => {
+    if (!tradeNo) return;
+    setChecking(true);
+    try {
+      const res = await API.get(
+        `/api/user/wechat-pay/status?trade_no=${tradeNo}`,
+      );
+      const { message, data } = res.data;
+      if (message === 'success') {
+        if (data.status === 'success') {
+          setStatus('success');
+          showSuccess(t('充值成功'));
+          onSuccess?.();
+        } else if (data.status === 'expired') {
+          setStatus('expired');
+        } else {
+          showError(t('支付尚未完成，请稍后再试'));
+        }
+      } else {
+        showError(t('查询支付状态失败'));
+      }
+    } catch (e) {
+      showError(t('查询支付状态失败'));
+    } finally {
+      setChecking(false);
+    }
   };
 
   const renderContent = () => {
@@ -166,9 +163,21 @@ const WeChatPayQRCodeModal = ({
       visible={visible}
       onCancel={handleClose}
       footer={
-        <Button onClick={handleClose}>
-          {status === 'success' ? t('完成') : t('关闭')}
-        </Button>
+        <Space>
+          {status === 'pending' && (
+            <Button
+              theme='solid'
+              type='primary'
+              onClick={handlePaymentComplete}
+              loading={checking}
+            >
+              {t('已完成支付')}
+            </Button>
+          )}
+          <Button onClick={handleClose}>
+            {status === 'success' ? t('完成') : t('关闭')}
+          </Button>
+        </Space>
       }
       centered
       width={360}

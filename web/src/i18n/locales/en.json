@@ -3788,5 +3788,17 @@
     "含时间条件": "Time rules",
     "含请求条件": "Request rules",
     "（当前仅支持易支付接口，默认使用上方服务器地址作为回调地址！）": "(Currently only supports Epay interface, the default callback address is the server address above!)"
-  }
+  },
+  "确认支付": "Confirm Payment",
+  "已完成支付": "Payment Completed",
+  "支付尚未完成，请稍后再试": "Payment not yet completed, please try again later",
+  "查询支付状态失败": "Failed to query payment status",
+  "充值协议": "Top-up Agreement",
+  "用户充值时需同意的协议内容，留空则不显示协议链接": "Agreement content that users must agree to before topping up. Leave empty to hide the agreement link.",
+  "充值协议已更新": "Top-up agreement updated",
+  "充值协议更新失败": "Failed to update top-up agreement",
+  "在此输入充值协议内容，支持 Markdown & HTML 代码": "Enter top-up agreement content here, supports Markdown & HTML code",
+  "填写充值协议内容后，用户充值时将被要求勾选已阅读充值协议": "After filling in the top-up agreement, users will be required to check the agreement before topping up",
+  "设置充值协议": "Set Top-up Agreement",
+  "我已知悉充值资金不支持直接开具发票，确认支付即代表同意本平台": "I acknowledge that top-up funds do not support direct invoicing, and confirming payment means agreeing to this platform's "
 }

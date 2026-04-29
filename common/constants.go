@@ -16,6 +16,7 @@ var SystemName = "New API"
 var Footer = ""
 var Logo = ""
 var TopUpLink = ""
+var TopUpAgreement = ""
 
 // var ChatLink = ""
 // var ChatLink2 = ""
