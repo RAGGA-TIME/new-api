@@ -1,6 +1,7 @@
 package setting
 
 var (
+	WeChatPayEnabled     bool    = false
 	WeChatPayAppID       string
 	WeChatPayMchID       string
 	WeChatPayAPIv3Key    string

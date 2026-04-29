@@ -62,6 +62,7 @@ const PaymentSetting = () => {
     WaffoPancakeUnitPrice: 1.0,
     WaffoPancakeMinTopUp: 1,
 
+    WeChatPayEnabled: false,
     WeChatPayAppID: '',
     WeChatPayMchID: '',
     WeChatPaySerialNo: '',

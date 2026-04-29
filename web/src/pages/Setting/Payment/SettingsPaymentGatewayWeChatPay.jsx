@@ -14,6 +14,7 @@ export default function SettingsPaymentGatewayWeChatPay(props) {
   const sectionTitle = props.hideSectionTitle ? undefined : t('微信支付设置');
   const [loading, setLoading] = useState(false);
   const [inputs, setInputs] = useState({
+    WeChatPayEnabled: false,
     WeChatPayAppID: '',
     WeChatPayMchID: '',
     WeChatPayAPIv3Key: '',
@@ -30,6 +31,7 @@ export default function SettingsPaymentGatewayWeChatPay(props) {
   useEffect(() => {
     if (props.options && formApiRef.current) {
       const currentInputs = {
+        WeChatPayEnabled: props.options.WeChatPayEnabled || false,
         WeChatPayAppID: props.options.WeChatPayAppID || '',
         WeChatPayMchID: props.options.WeChatPayMchID || '',
         WeChatPayAPIv3Key: '',
@@ -65,6 +67,8 @@ export default function SettingsPaymentGatewayWeChatPay(props) {
     setLoading(true);
     try {
       const options = [];
+
+      options.push({ key: 'WeChatPayEnabled', value: inputs.WeChatPayEnabled ? 'true' : 'false' });
 
       if (inputs.WeChatPayAppID !== '') {
         options.push({ key: 'WeChatPayAppID', value: inputs.WeChatPayAppID });
@@ -140,6 +144,14 @@ export default function SettingsPaymentGatewayWeChatPay(props) {
               </>
             }
             style={{ marginBottom: 12 }}
+          />
+          <Form.Switch
+            field='WeChatPayEnabled'
+            label={t('启用微信支付')}
+            size='default'
+            checkedText='｜'
+            uncheckedText='〇'
+            extraText={t('开启后用户可在充值页面使用微信支付，关闭后则不可使用')}
           />
           <Row gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}>
             <Col xs={24} sm={24} md={8} lg={8} xl={8}>
