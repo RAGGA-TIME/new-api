@@ -57,6 +57,16 @@
 |--------|------|
 | `X-New-Api-Other-Ratios` | JSON 字符串：计费相关的其它倍率（如视频含视频输入时的 `video_input` 等），用于客户端或调试观测 |
 
+### 1.6 文本对话（Chat Completions）
+
+| 项目 | 说明 |
+|------|------|
+| 客户端路由 | 与其它渠道一致，使用全局 **`POST /v1/chat/completions`**（见 `router/relay-router.go`），认证与分组规则不变。 |
+| 网关 → 上游 | 渠道类型 **58** 复用 **Volcengine** adaptor 做请求/鉴权/部分响应处理；文本上游路径为 **`{Base URL}/v2/chat/completions`**（与视频/图等 **`/v2/*`** 同一 API 族）。**不要**使用 `{Base URL}/v1/chat/completions` 或 `/api/v3/chat/completions`：在该域名下会返回 HTTP 400「接口不存在」。Base URL 默认 `https://api.pingxingshijie.cn`。 |
+| `model` | Body 必填；值为控制台/方舟侧 **endpoint 模型 ID**（与后台模型映射一致）。 |
+| 响应包装 | 若上游 JSON **根级含 `code`**（含 **`/v2/chat/completions`** 业务错误如 **`{"code":401,"message":"..."}`**），网关在 **非流式** 下会：对 **`code != 0`** 直接返回对应 HTTP 状态与文案；对 **`code == 0`** 且含 **`data`** 时解包 **`data`** 后再按 OpenAI Chat Completion 解析。无根级 **`code`** 的纯 OpenAI 形体会原样解析。流式（SSE）仍透传上游字节流（若上游对流也包装，需客户端或后续版本单独适配）。 |
+| 后台「测试渠道」 | 已支持 58：模型名 **含 `seedream`**（不区分大小写）时走 **`/v1/images/generations`** 测同步图；否则默认走 **`/v1/chat/completions`** 测文本。 |
+
 ---
 
 ## 2. 视频生成
@@ -86,6 +96,34 @@
 
 - 若 `metadata.content` 中已含 **`draft_task`**，则不再自动追加文本项。
 - 否则：先合并 `metadata` 解析出的 `content`/`resolution`/`ratio` 等，再追加一条 `type: text`、`text: prompt` 的条目（并过滤掉仅用于占位的旧 text 项）。
+
+**Seedance 1.5 Pro：草稿任务 ID 放大（仅 `draft_task`，不需要 `metadata.draft`）**
+
+「草稿 id 放大」只需在 **`metadata.content`** 里提供 **`type: "draft_task"`** 与 **`draft_task.id`**（指向上游已返回的 **draft 预览**任务 id，如 `cgt-...`）。**不需要**单独设置 **`metadata.draft`**；该布尔字段与「引用草稿任务 id 做放大」不是同一语义。网关仍会校验顶层 **`prompt` 非空**（可与业务无关的占位文案），但不会把 `prompt` 当作 `content` 文本发给上游。
+
+`resolution` 在 Seedance 1.5 Pro 放大场景下应为 **`720p`** 或 **`1080p`**（若误传 `480p` 等，网关会对该模型归一为合法放大档位）。其它 `metadata` 字段（如 **`watermark`**、**`return_last_frame`**）按上游支持情况原样合并。
+
+示例（下游 OpenAI 风格任务体）：
+
+```json
+{
+  "model": "doubao-seedance-1-5-pro-251215",
+  "prompt": "Generate from draft",
+  "metadata": {
+    "content": [
+      {
+        "type": "draft_task",
+        "draft_task": {
+          "id": "cgt-20260416103233-xccct"
+        }
+      }
+    ],
+    "watermark": false,
+    "resolution": "720p",
+    "return_last_frame": true
+  }
+}
+```
 
 #### 2.1.2 `metadata` 内常用字段（与上游 `requestPayload` 对齐）
 
