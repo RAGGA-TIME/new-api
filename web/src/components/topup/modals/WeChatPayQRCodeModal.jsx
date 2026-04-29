@@ -90,8 +90,10 @@ const WeChatPayQRCodeModal = ({
   const renderContent = () => {
     if (status === 'success') {
       return (
-        <div style={{ display: 'flex', justifyContent: 'center', textAlign: 'center', padding: '20px 0' }}>
-          <CheckCircle size={48} color='#07C160' style={{ marginBottom: 12 }} />
+        <div style={{ textAlign: 'center', padding: '20px 0' }}>
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <CheckCircle size={48} color='#07C160' style={{ marginBottom: 12 }} />
+          </div>
           <Typography.Title heading={4} style={{ color: '#07C160' }}>
             {t('支付成功')}
           </Typography.Title>
