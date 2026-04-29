@@ -540,6 +540,15 @@ func extractAssetCreateID(inner []byte) string {
 			}
 		}
 	}
+	for _, resultKey := range []string{"Result", "result"} {
+		if res, ok := m[resultKey].(map[string]any); ok {
+			for _, k := range []string{"Id", "id", "asset_id", "AssetId", "ID"} {
+				if v, ok := res[k].(string); ok && v != "" {
+					return v
+				}
+			}
+		}
+	}
 	return ""
 }
 

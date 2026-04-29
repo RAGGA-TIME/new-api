@@ -5,6 +5,7 @@ const AssetPlaceholderModel = "pingxingshijie-asset"
 
 // ModelList contains the PingXingShiJie models documented in docs/pingxingshijie-api-reference.md.
 var ModelList = []string{
+	AssetPlaceholderModel,
 	"doubao-seedance-1-0-pro-fast-251015",
 	"doubao-seedance-1-5-pro-251215",
 	"doubao-seedance-2-0-fast-260128",

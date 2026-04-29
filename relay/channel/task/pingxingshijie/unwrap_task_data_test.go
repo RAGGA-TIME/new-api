@@ -73,3 +73,18 @@ func TestConvertToOpenAIAsyncImage_SubmitAckReturnsPendingResponse(t *testing.T)
 		t.Fatal("expected upstream submit ack metadata")
 	}
 }
+
+func TestExtractAssetCreateID_ResponseMetadataResultShape(t *testing.T) {
+	const body = `{
+		"ResponseMetadata": {
+			"RequestId": "20260319162446B5DF7E4FBBC56F78E6DA"
+		},
+		"Result": {
+			"Id": "asset-20260319082447-qrrjp"
+		}
+	}`
+
+	if got := extractAssetCreateID([]byte(body)); got != "asset-20260319082447-qrrjp" {
+		t.Fatalf("extractAssetCreateID() = %q", got)
+	}
+}
