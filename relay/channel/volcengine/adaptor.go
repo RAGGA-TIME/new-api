@@ -243,7 +243,7 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 		baseUrl = channelconstant.ChannelBaseURLs[channelconstant.ChannelTypeVolcEngine]
 	}
 	baseTrim := strings.TrimSuffix(strings.TrimSpace(baseUrl), "/")
-	// PingXingShiJie (58): text chat is served under /v2/* (same API family as video/image). /v1/chat/completions and /api/v3/* return HTTP 400 "接口不存在" on api.pingxingshijie.cn.
+	// PingXingShiJie (59): text chat is served under /v2/* (same API family as video/image). /v1/chat/completions and /api/v3/* return HTTP 400 "接口不存在" on api.pingxingshijie.cn.
 	if info.ChannelMeta != nil && info.ChannelMeta.ChannelType == channelconstant.ChannelTypePingXingShiJie {
 		switch info.RelayMode {
 		case constant.RelayModeChatCompletions:
@@ -401,7 +401,7 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 		return handleTTSResponse(c, resp, info, encoding)
 	}
 
-	// PingXingShiJie (58) sync APIs often wrap JSON in {"code":0,"msg":"...","data":...}; unwrap for OpenAI-shaped inner body.
+	// PingXingShiJie (59) sync APIs often wrap JSON in {"code":0,"msg":"...","data":...}; unwrap for OpenAI-shaped inner body.
 	if info.ChannelMeta != nil && info.ChannelMeta.ChannelType == channelconstant.ChannelTypePingXingShiJie &&
 		!info.IsStream && resp != nil && resp.Body != nil {
 		body, readErr := io.ReadAll(resp.Body)
