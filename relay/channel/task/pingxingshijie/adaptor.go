@@ -105,6 +105,7 @@ type responseTask struct {
 }
 
 // imageResponseTask mirrors upstream image task polling (fields may vary; use loose parsing where needed).
+// Seedream-style responses use status "done" and put URLs in data[].url instead of content.image_url.
 type imageResponseTask struct {
 	ID      string `json:"id"`
 	Model   string `json:"model"`
@@ -112,10 +113,30 @@ type imageResponseTask struct {
 	Content struct {
 		ImageURL string `json:"image_url"`
 	} `json:"content"`
+	// Data holds generated image entries (PingXingShiJie / Volc Seedream shape).
+	Data []struct {
+		Size string `json:"size"`
+		URL  string `json:"url"`
+	} `json:"data"`
 	Error struct {
 		Code    string `json:"code"`
 		Message string `json:"message"`
 	} `json:"error"`
+}
+
+func (img *imageResponseTask) resultImageURL() string {
+	if img == nil {
+		return ""
+	}
+	if img.Content.ImageURL != "" {
+		return img.Content.ImageURL
+	}
+	for _, d := range img.Data {
+		if strings.TrimSpace(d.URL) != "" {
+			return d.URL
+		}
+	}
+	return ""
 }
 
 // ============================
@@ -321,12 +342,15 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 			taskErr = service.TaskErrorWrapper(fmt.Errorf("image task id is empty"), "invalid_response", http.StatusInternalServerError)
 			return
 		}
-		taskData = inner
+		taskData = append([]byte(nil), responseBody...)
 		ov := dto.NewOpenAIVideo()
 		ov.ID = info.PublicTaskID
 		ov.TaskID = info.PublicTaskID
 		ov.CreatedAt = time.Now().Unix()
 		ov.Model = info.OriginModelName
+		if ux := jsonAnyFromBytes(responseBody); ux != nil {
+			ov.SetMetadata("upstream", ux)
+		}
 		c.JSON(http.StatusOK, ov)
 		return id, taskData, nil
 
@@ -336,13 +360,17 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 			taskErr = service.TaskErrorWrapper(fmt.Errorf("asset id is empty"), "invalid_response", http.StatusInternalServerError)
 			return
 		}
-		taskData = inner
-		c.JSON(http.StatusOK, gin.H{
+		taskData = append([]byte(nil), responseBody...)
+		resp := gin.H{
 			"id":       info.PublicTaskID,
 			"task_id":  info.PublicTaskID,
 			"asset_id": id,
 			"object":   "pingxingshijie.asset.upload",
-		})
+		}
+		if ux := jsonAnyFromBytes(responseBody); ux != nil {
+			resp["upstream"] = ux
+		}
+		c.JSON(http.StatusOK, resp)
 		return id, taskData, nil
 
 	default:
@@ -351,7 +379,11 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 			taskErr = service.TaskErrorWrapper(errors.Wrapf(err, "body: %s", string(inner)), "unmarshal_response_body_failed", http.StatusInternalServerError)
 			return
 		}
-		if dResp.ID == "" {
+		upstreamID := strings.TrimSpace(dResp.ID)
+		if upstreamID == "" {
+			upstreamID = extractVideoCreateTaskID(inner)
+		}
+		if upstreamID == "" {
 			taskErr = service.TaskErrorWrapper(fmt.Errorf("task_id is empty"), "invalid_response", http.StatusInternalServerError)
 			return
 		}
@@ -360,9 +392,54 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 		ov.TaskID = info.PublicTaskID
 		ov.CreatedAt = time.Now().Unix()
 		ov.Model = info.OriginModelName
+		if ux := jsonAnyFromBytes(responseBody); ux != nil {
+			ov.SetMetadata("upstream", ux)
+		}
 		c.JSON(http.StatusOK, ov)
-		return dResp.ID, inner, nil
+		return upstreamID, append([]byte(nil), responseBody...), nil
 	}
+}
+
+// extractVideoCreateTaskID resolves upstream task id from POST /v2/video/generations inner JSON.
+// Ark-style responses may use id, task_id, or nest under data / data.data (draft upscale and variants).
+func extractVideoCreateTaskID(inner []byte) string {
+	var m map[string]any
+	if common.Unmarshal(inner, &m) != nil {
+		return ""
+	}
+	if id := firstStringInMap(m, "id", "task_id", "TaskId", "taskId"); id != "" {
+		return id
+	}
+	for _, wrap := range []string{"Result", "result"} {
+		if r, ok := m[wrap].(map[string]any); ok {
+			if id := firstStringInMap(r, "id", "task_id", "TaskId", "taskId"); id != "" {
+				return id
+			}
+		}
+	}
+	if d, ok := m["data"].(map[string]any); ok {
+		if id := firstStringInMap(d, "id", "task_id", "TaskId", "taskId"); id != "" {
+			return id
+		}
+		if d2, ok := d["data"].(map[string]any); ok {
+			if id := firstStringInMap(d2, "id", "task_id", "TaskId", "taskId"); id != "" {
+				return id
+			}
+		}
+	}
+	return ""
+}
+
+func firstStringInMap(m map[string]any, keys ...string) string {
+	for _, k := range keys {
+		if v, ok := m[k].(string); ok {
+			v = strings.TrimSpace(v)
+			if v != "" {
+				return v
+			}
+		}
+	}
+	return ""
 }
 
 func extractImageCreateTaskID(inner []byte) string {
@@ -508,12 +585,21 @@ func contentHasDraftTask(items []ContentItem) bool {
 	return false
 }
 
+// unwrapInnerForTaskData returns the inner JSON from a PingXingShiJie envelope, or the original
+// body if not wrapped. If the envelope has code==0 but an empty/missing "data" field, returns raw
+// so callers never pass an empty slice to json.Unmarshal (which yields "unexpected end of JSON input").
 func unwrapInnerForTaskData(raw []byte) ([]byte, error) {
-	inner, err := UnmarshalEnvelope(raw)
-	if err == nil {
-		return inner, nil
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil, fmt.Errorf("empty task data")
 	}
-	return raw, nil
+	inner, err := UnmarshalEnvelope(raw)
+	if err != nil {
+		return raw, nil
+	}
+	if len(bytes.TrimSpace(inner)) == 0 {
+		return raw, nil
+	}
+	return inner, nil
 }
 
 func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {
@@ -535,7 +621,7 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 
 	// Image-style
 	var img imageResponseTask
-	if common.Unmarshal(inner, &img) == nil && (img.Content.ImageURL != "" || img.Status != "" || img.ID != "") {
+	if common.Unmarshal(inner, &img) == nil && (img.resultImageURL() != "" || img.Status != "" || img.ID != "") {
 		return mapImageTaskResult(&img)
 	}
 
@@ -613,7 +699,7 @@ func mapVideoTaskResult(resTask *responseTask) (*relaycommon.TaskInfo, error) {
 	case "processing", "running":
 		taskResult.Status = model.TaskStatusInProgress
 		taskResult.Progress = "50%"
-	case "succeeded", "success", "completed":
+	case "succeeded", "success", "completed", "done":
 		taskResult.Status = model.TaskStatusSuccess
 		taskResult.Progress = "100%"
 		taskResult.Url = resTask.Content.VideoURL
@@ -644,10 +730,10 @@ func mapImageTaskResult(resTask *imageResponseTask) (*relaycommon.TaskInfo, erro
 	case "processing", "running":
 		taskResult.Status = model.TaskStatusInProgress
 		taskResult.Progress = "50%"
-	case "succeeded", "success", "completed":
+	case "succeeded", "success", "completed", "done":
 		taskResult.Status = model.TaskStatusSuccess
 		taskResult.Progress = "100%"
-		taskResult.Url = resTask.Content.ImageURL
+		taskResult.Url = resTask.resultImageURL()
 	case "failed", "failure":
 		taskResult.Status = model.TaskStatusFailure
 		taskResult.Progress = "100%"
@@ -660,13 +746,20 @@ func mapImageTaskResult(resTask *imageResponseTask) (*relaycommon.TaskInfo, erro
 }
 
 func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, error) {
-	inner, err := unwrapInnerForTaskData(originTask.Data)
-	if err != nil {
-		return nil, err
-	}
 	var dResp responseTask
-	if err := common.Unmarshal(inner, &dResp); err != nil {
-		return nil, errors.Wrap(err, "unmarshal pingxingshijie task data failed")
+	if len(bytes.TrimSpace(originTask.Data)) > 0 {
+		inner, err := unwrapInnerForTaskData(originTask.Data)
+		if err != nil {
+			return nil, err
+		}
+		if err := common.Unmarshal(inner, &dResp); err != nil {
+			return nil, errors.Wrap(err, "unmarshal pingxingshijie task data failed")
+		}
+	}
+
+	videoURL := strings.TrimSpace(dResp.Content.VideoURL)
+	if videoURL == "" {
+		videoURL = strings.TrimSpace(originTask.GetResultURL())
 	}
 
 	openAIVideo := dto.NewOpenAIVideo()
@@ -674,10 +767,13 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 	openAIVideo.TaskID = originTask.TaskID
 	openAIVideo.Status = originTask.Status.ToVideoStatus()
 	openAIVideo.SetProgressStr(originTask.Progress)
-	openAIVideo.SetMetadata("url", dResp.Content.VideoURL)
+	openAIVideo.SetMetadata("url", videoURL)
 	openAIVideo.CreatedAt = originTask.CreatedAt
 	openAIVideo.CompletedAt = originTask.UpdatedAt
 	openAIVideo.Model = originTask.Properties.OriginModelName
+	if ux := jsonAnyFromBytes(originTask.Data); ux != nil {
+		openAIVideo.SetMetadata("upstream", ux)
+	}
 
 	if strings.EqualFold(dResp.Status, "failed") || strings.EqualFold(dResp.Status, "failure") {
 		openAIVideo.Error = &dto.OpenAIVideoError{
@@ -709,11 +805,14 @@ func (a *TaskAdaptor) ConvertToOpenAIAsyncImage(originTask *model.Task) ([]byte,
 		"created_at": originTask.CreatedAt,
 		"updated_at": originTask.UpdatedAt,
 	}
-	if img.Content.ImageURL != "" {
-		out["url"] = img.Content.ImageURL
+	if u := img.resultImageURL(); u != "" {
+		out["url"] = u
 	}
 	if strings.EqualFold(img.Status, "failed") || strings.EqualFold(img.Status, "failure") {
 		out["error"] = map[string]any{"message": img.Error.Message, "code": img.Error.Code}
+	}
+	if ux := jsonAnyFromBytes(originTask.Data); ux != nil {
+		out["upstream"] = ux
 	}
 	return common.Marshal(out)
 }
@@ -737,6 +836,9 @@ func (a *TaskAdaptor) ConvertToOpenAIAssetTask(originTask *model.Task) ([]byte, 
 		"created_at": originTask.CreatedAt,
 		"updated_at": originTask.UpdatedAt,
 		"data":       m,
+	}
+	if ux := jsonAnyFromBytes(originTask.Data); ux != nil {
+		out["upstream"] = ux
 	}
 	if originTask.FailReason != "" {
 		out["fail_reason"] = originTask.FailReason
