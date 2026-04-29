@@ -772,23 +772,54 @@ func (t *TaskSubmitReq) UnmarshalJSON(data []byte) error {
 		}
 	}
 
+	metadataObj := make(map[string]interface{})
+	for key, rawValue := range raw {
+		if isTaskSubmitReqKnownJSONField(key) {
+			continue
+		}
+		var value interface{}
+		if err := common.Unmarshal(rawValue, &value); err != nil {
+			return err
+		}
+		metadataObj[key] = value
+	}
+
 	if len(aux.Metadata) > 0 {
 		var metadataStr string
 		if err := common.Unmarshal(aux.Metadata, &metadataStr); err == nil && metadataStr != "" {
-			var metadataObj map[string]interface{}
-			if err := common.Unmarshal([]byte(metadataStr), &metadataObj); err == nil {
-				t.Metadata = metadataObj
+			var explicitMetadata map[string]interface{}
+			if err := common.Unmarshal([]byte(metadataStr), &explicitMetadata); err == nil {
+				for key, value := range explicitMetadata {
+					metadataObj[key] = value
+				}
+				if len(metadataObj) > 0 {
+					t.Metadata = metadataObj
+				}
 				return nil
 			}
 		}
 
-		var metadataObj map[string]interface{}
-		if err := common.Unmarshal(aux.Metadata, &metadataObj); err == nil {
-			t.Metadata = metadataObj
+		var explicitMetadata map[string]interface{}
+		if err := common.Unmarshal(aux.Metadata, &explicitMetadata); err == nil {
+			for key, value := range explicitMetadata {
+				metadataObj[key] = value
+			}
 		}
+	}
+	if len(metadataObj) > 0 {
+		t.Metadata = metadataObj
 	}
 
 	return nil
+}
+
+func isTaskSubmitReqKnownJSONField(field string) bool {
+	switch field {
+	case "prompt", "model", "mode", "image", "images", "size", "resolution", "duration", "seconds", "input_reference", "metadata":
+		return true
+	default:
+		return false
+	}
 }
 func (t *TaskSubmitReq) UnmarshalMetadata(v any) error {
 	metadata := t.Metadata
