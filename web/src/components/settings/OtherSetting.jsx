@@ -36,6 +36,7 @@ import Text from '@douyinfe/semi-ui/lib/es/typography/text';
 
 const LEGAL_USER_AGREEMENT_KEY = 'legal.user_agreement';
 const LEGAL_PRIVACY_POLICY_KEY = 'legal.privacy_policy';
+const LEGAL_TOPUP_AGREEMENT_KEY = 'TopUpAgreement';
 
 const OtherSetting = () => {
   const { t } = useTranslation();
@@ -43,6 +44,7 @@ const OtherSetting = () => {
     Notice: '',
     [LEGAL_USER_AGREEMENT_KEY]: '',
     [LEGAL_PRIVACY_POLICY_KEY]: '',
+    [LEGAL_TOPUP_AGREEMENT_KEY]: '',
     SystemName: '',
     Logo: '',
     Footer: '',
@@ -76,6 +78,7 @@ const OtherSetting = () => {
     Notice: false,
     [LEGAL_USER_AGREEMENT_KEY]: false,
     [LEGAL_PRIVACY_POLICY_KEY]: false,
+    [LEGAL_TOPUP_AGREEMENT_KEY]: false,
     SystemName: false,
     Logo: false,
     HomePageContent: false,
@@ -144,6 +147,28 @@ const OtherSetting = () => {
       setLoadingInput((loadingInput) => ({
         ...loadingInput,
         [LEGAL_PRIVACY_POLICY_KEY]: false,
+      }));
+    }
+  };
+  // 通用设置 - TopUpAgreement
+  const submitTopUpAgreement = async () => {
+    try {
+      setLoadingInput((loadingInput) => ({
+        ...loadingInput,
+        [LEGAL_TOPUP_AGREEMENT_KEY]: true,
+      }));
+      await updateOption(
+        LEGAL_TOPUP_AGREEMENT_KEY,
+        inputs[LEGAL_TOPUP_AGREEMENT_KEY],
+      );
+      showSuccess(t('充值协议已更新'));
+    } catch (error) {
+      console.error(t('充值协议更新失败'), error);
+      showError(t('充值协议更新失败'));
+    } finally {
+      setLoadingInput((loadingInput) => ({
+        ...loadingInput,
+        [LEGAL_TOPUP_AGREEMENT_KEY]: false,
       }));
     }
   };
@@ -412,6 +437,25 @@ const OtherSetting = () => {
                 loading={loadingInput[LEGAL_PRIVACY_POLICY_KEY]}
               >
                 {t('设置隐私政策')}
+              </Button>
+              <Form.TextArea
+                label={t('充值协议')}
+                placeholder={t(
+                  '在此输入充值协议内容，支持 Markdown & HTML 代码',
+                )}
+                field={LEGAL_TOPUP_AGREEMENT_KEY}
+                onChange={handleInputChange}
+                style={{ fontFamily: 'JetBrains Mono, Consolas' }}
+                autosize={{ minRows: 6, maxRows: 12 }}
+                helpText={t(
+                  '填写充值协议内容后，用户充值时将被要求勾选已阅读充值协议',
+                )}
+              />
+              <Button
+                onClick={submitTopUpAgreement}
+                loading={loadingInput[LEGAL_TOPUP_AGREEMENT_KEY]}
+              >
+                {t('设置充值协议')}
               </Button>
             </Form.Section>
           </Card>

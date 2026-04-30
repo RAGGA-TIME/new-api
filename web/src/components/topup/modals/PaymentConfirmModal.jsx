@@ -140,6 +140,12 @@ const PaymentConfirmModal = ({
                             size={16}
                             color='#635BFF'
                           />
+                        ) : payMethod.type === 'wechat_pay' ? (
+                          <SiWechat
+                            className='mr-2'
+                            size={16}
+                            color='#07C160'
+                          />
                         ) : payMethod.icon ? (
                           <img
                             src={payMethod.icon}
