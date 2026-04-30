@@ -216,7 +216,7 @@ func (a *TaskAdaptor) BuildRequestHeader(_ *gin.Context, req *http.Request, _ *r
 	return nil
 }
 
-// EstimateBilling detects video input in metadata and returns video discount OtherRatio.
+// EstimateBilling detects Seedance 2.0 resolution pricing and video-input discounts.
 func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
 	path := requestPathFromRelay(info)
 	if UpstreamKindFromPath(path) != UpstreamKindVideo {
@@ -226,12 +226,34 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 	if err != nil {
 		return nil
 	}
+	ratioMap := make(map[string]float64)
+	resolution := requestResolution(req)
+	if ratio, ok := GetResolutionRatio(info.OriginModelName, resolution); ok {
+		ratioMap["resolution"] = ratio
+	}
 	if hasVideoInMetadata(req.Metadata) {
-		if ratio, ok := GetVideoInputRatio(info.OriginModelName); ok {
-			return map[string]float64{"video_input": ratio}
+		if ratio, ok := GetVideoInputRatioForResolution(info.OriginModelName, resolution); ok {
+			ratioMap["video_input"] = ratio
 		}
 	}
-	return nil
+	if len(ratioMap) == 0 {
+		return nil
+	}
+	return ratioMap
+}
+
+func requestResolution(req relaycommon.TaskSubmitReq) string {
+	if req.Resolution != "" {
+		return strings.ToLower(strings.TrimSpace(req.Resolution))
+	}
+	if req.Metadata == nil {
+		return ""
+	}
+	resolution, ok := req.Metadata["resolution"].(string)
+	if !ok {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(resolution))
 }
 
 func hasVideoInMetadata(metadata map[string]interface{}) bool {

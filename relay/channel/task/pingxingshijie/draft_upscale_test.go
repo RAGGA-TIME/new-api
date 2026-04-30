@@ -1,11 +1,14 @@
 package pingxingshijie
 
 import (
+	"math"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/gin-gonic/gin"
 )
 
 func TestNormalizeSeedance15DraftUpscaleResolution(t *testing.T) {
@@ -176,5 +179,131 @@ func TestConvertToRequestPayload_TopLevelSeedanceContentAndParams(t *testing.T) 
 	}
 	if got["generate_audio"] != true {
 		t.Fatalf("generate_audio: got %#v", got["generate_audio"])
+	}
+}
+
+func TestEstimateBilling_Seedance20OnlyApplies1080PResolutionRatio(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name       string
+		model      string
+		resolution string
+		content    []interface{}
+		want       map[string]float64
+	}{
+		{
+			name:       "seedance 2.0 1080p without video input uses 51 base price ratio",
+			model:      "doubao-seedance-2-0-260128",
+			resolution: "1080p",
+			want:       map[string]float64{"resolution": 51.0 / 46.0},
+		},
+		{
+			name:       "seedance 2.0 1080p with video input uses corrected 31 over 51 combined ratio",
+			model:      "doubao-seedance-2-0-260128",
+			resolution: "1080p",
+			content: []interface{}{
+				map[string]interface{}{
+					"type":      "video_url",
+					"video_url": map[string]interface{}{"url": "https://example.com/input.mp4"},
+				},
+			},
+			want: map[string]float64{"video_input": 31.0 / 51.0, "resolution": 51.0 / 46.0},
+		},
+		{
+			name:       "seedance 2.0 720p without video input has no adjustment",
+			model:      "doubao-seedance-2-0-260128",
+			resolution: "720p",
+		},
+		{
+			name:       "seedance 2.0 480p with video input keeps normal video input pricing",
+			model:      "doubao-seedance-2-0-260128",
+			resolution: "480p",
+			content: []interface{}{
+				map[string]interface{}{
+					"type":      "video_url",
+					"video_url": map[string]interface{}{"url": "https://example.com/input.mp4"},
+				},
+			},
+			want: map[string]float64{"video_input": 28.0 / 46.0},
+		},
+		{
+			name:       "seedance 2.0 720p with video input keeps normal video input pricing",
+			model:      "doubao-seedance-2-0-260128",
+			resolution: "720p",
+			content: []interface{}{
+				map[string]interface{}{
+					"type":      "video_url",
+					"video_url": map[string]interface{}{"url": "https://example.com/input.mp4"},
+				},
+			},
+			want: map[string]float64{"video_input": 28.0 / 46.0},
+		},
+		{
+			name:       "seedance 2.0 fast 1080p is not adjusted by seedance 2.0 pricing",
+			model:      "doubao-seedance-2-0-fast-260128",
+			resolution: "1080p",
+		},
+		{
+			name:       "seedance 2.0 fast with video input keeps fast pricing",
+			model:      "doubao-seedance-2-0-fast-260128",
+			resolution: "1080p",
+			content: []interface{}{
+				map[string]interface{}{
+					"type":      "video_url",
+					"video_url": map[string]interface{}{"url": "https://example.com/input.mp4"},
+				},
+			},
+			want: map[string]float64{"video_input": 22.0 / 37.0},
+		},
+		{
+			name:       "seedance 1.5 pro 1080p is not adjusted by seedance 2.0 pricing",
+			model:      "doubao-seedance-1-5-pro-251215",
+			resolution: "1080p",
+		},
+		{
+			name:       "seedance 1.0 is not adjusted by seedance 2.0 pricing",
+			model:      "doubao-seedance-1-0-pro-fast-251015",
+			resolution: "1080p",
+			content: []interface{}{
+				map[string]interface{}{
+					"type":      "video_url",
+					"video_url": map[string]interface{}{"url": "https://example.com/input.mp4"},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			metadata := map[string]interface{}{"resolution": tt.resolution}
+			if tt.content != nil {
+				metadata["content"] = tt.content
+			}
+			c.Set("task_request", relaycommon.TaskSubmitReq{
+				Model:    tt.model,
+				Prompt:   "test",
+				Metadata: metadata,
+			})
+			got := (&TaskAdaptor{}).EstimateBilling(c, &relaycommon.RelayInfo{OriginModelName: tt.model})
+			assertRatios(t, got, tt.want)
+		})
+	}
+}
+
+func assertRatios(t *testing.T, got, want map[string]float64) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("ratio count: got %#v want %#v", got, want)
+	}
+	for key, wantValue := range want {
+		gotValue, ok := got[key]
+		if !ok {
+			t.Fatalf("missing ratio %q in %#v", key, got)
+		}
+		if math.Abs(gotValue-wantValue) > 1e-12 {
+			t.Fatalf("ratio %q: got %.12f want %.12f", key, gotValue, wantValue)
+		}
 	}
 }
