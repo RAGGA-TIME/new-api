@@ -1,6 +1,7 @@
 package common
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -310,24 +311,25 @@ func (info *RelayInfo) ToString() string {
 
 // 定义支持流式选项的通道类型
 var streamSupportedChannels = map[int]bool{
-	constant.ChannelTypeOpenAI:      true,
-	constant.ChannelTypeAnthropic:   true,
-	constant.ChannelTypeAws:         true,
-	constant.ChannelTypeGemini:      true,
-	constant.ChannelCloudflare:      true,
-	constant.ChannelTypeAzure:       true,
-	constant.ChannelTypeVolcEngine:  true,
-	constant.ChannelTypeOllama:      true,
-	constant.ChannelTypeXai:         true,
-	constant.ChannelTypeDeepSeek:    true,
-	constant.ChannelTypeBaiduV2:     true,
-	constant.ChannelTypeZhipu_v4:    true,
-	constant.ChannelTypeAli:         true,
-	constant.ChannelTypeSubmodel:    true,
-	constant.ChannelTypeCodex:       true,
-	constant.ChannelTypeMoonshot:    true,
-	constant.ChannelTypeMiniMax:     true,
-	constant.ChannelTypeSiliconFlow: true,
+	constant.ChannelTypeOpenAI:         true,
+	constant.ChannelTypeAnthropic:      true,
+	constant.ChannelTypeAws:            true,
+	constant.ChannelTypeGemini:         true,
+	constant.ChannelCloudflare:         true,
+	constant.ChannelTypeAzure:          true,
+	constant.ChannelTypeVolcEngine:     true,
+	constant.ChannelTypePingXingShiJie: true,
+	constant.ChannelTypeOllama:         true,
+	constant.ChannelTypeXai:            true,
+	constant.ChannelTypeDeepSeek:       true,
+	constant.ChannelTypeBaiduV2:        true,
+	constant.ChannelTypeZhipu_v4:       true,
+	constant.ChannelTypeAli:            true,
+	constant.ChannelTypeSubmodel:       true,
+	constant.ChannelTypeCodex:          true,
+	constant.ChannelTypeMoonshot:       true,
+	constant.ChannelTypeMiniMax:        true,
+	constant.ChannelTypeSiliconFlow:    true,
 }
 
 func GenRelayInfoWs(c *gin.Context, ws *websocket.Conn) *RelayInfo {
@@ -487,7 +489,14 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 		},
 	}
 
-	if info.RelayMode == relayconstant.RelayModeUnknown {
+	rmVal, rmExists := c.Get("relay_mode")
+	// Prefer relay_mode from Distribute() when set — Path2RelayMode may map GET /v1/images/generations/:id
+	// to RelayModeImagesGenerations, but task fetch must use RelayModeVideoFetchByID (see fetchRespBuilders).
+	if rmExists {
+		if v, ok := rmVal.(int); ok {
+			info.RelayMode = v
+		}
+	} else if info.RelayMode == relayconstant.RelayModeUnknown {
 		info.RelayMode = c.GetInt("relay_mode")
 	}
 
@@ -692,10 +701,40 @@ func (t *TaskSubmitReq) GetPrompt() string {
 }
 
 func (t *TaskSubmitReq) HasImage() bool {
-	return len(t.Images) > 0
+	return len(t.Images) > 0 || strings.TrimSpace(t.Image) != ""
 }
 
 func (t *TaskSubmitReq) UnmarshalJSON(data []byte) error {
+	// "image" may be a single URL string (OpenAI-style) or a list of reference URLs (Seedream / client convention).
+	var raw map[string]json.RawMessage
+	if err := common.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	var imageURLs []string
+	var imageStr string
+	if imgRaw, ok := raw["image"]; ok {
+		imgRaw = bytes.TrimSpace(imgRaw)
+		if len(imgRaw) > 0 && string(imgRaw) != "null" {
+			switch imgRaw[0] {
+			case '[':
+				if err := common.Unmarshal(imgRaw, &imageURLs); err != nil {
+					return err
+				}
+			case '"':
+				if err := common.Unmarshal(imgRaw, &imageStr); err != nil {
+					return err
+				}
+			default:
+				return fmt.Errorf("json: field \"image\" must be a string or array of strings")
+			}
+		}
+		delete(raw, "image")
+	}
+	stitched, err := common.Marshal(raw)
+	if err != nil {
+		return err
+	}
+
 	type Alias TaskSubmitReq
 	aux := &struct {
 		Metadata json.RawMessage `json:"metadata,omitempty"`
@@ -705,8 +744,18 @@ func (t *TaskSubmitReq) UnmarshalJSON(data []byte) error {
 		Alias: (*Alias)(t),
 	}
 
-	if err := common.Unmarshal(data, &aux); err != nil {
+	if err := common.Unmarshal(stitched, &aux); err != nil {
 		return err
+	}
+
+	if len(imageURLs) > 0 {
+		if len(t.Images) == 0 {
+			t.Images = imageURLs
+		} else {
+			t.Images = append(append([]string{}, t.Images...), imageURLs...)
+		}
+	} else if imageStr != "" {
+		t.Image = imageStr
 	}
 
 	if len(aux.Duration) > 0 {
@@ -723,23 +772,54 @@ func (t *TaskSubmitReq) UnmarshalJSON(data []byte) error {
 		}
 	}
 
+	metadataObj := make(map[string]interface{})
+	for key, rawValue := range raw {
+		if isTaskSubmitReqKnownJSONField(key) {
+			continue
+		}
+		var value interface{}
+		if err := common.Unmarshal(rawValue, &value); err != nil {
+			return err
+		}
+		metadataObj[key] = value
+	}
+
 	if len(aux.Metadata) > 0 {
 		var metadataStr string
 		if err := common.Unmarshal(aux.Metadata, &metadataStr); err == nil && metadataStr != "" {
-			var metadataObj map[string]interface{}
-			if err := common.Unmarshal([]byte(metadataStr), &metadataObj); err == nil {
-				t.Metadata = metadataObj
+			var explicitMetadata map[string]interface{}
+			if err := common.Unmarshal([]byte(metadataStr), &explicitMetadata); err == nil {
+				for key, value := range explicitMetadata {
+					metadataObj[key] = value
+				}
+				if len(metadataObj) > 0 {
+					t.Metadata = metadataObj
+				}
 				return nil
 			}
 		}
 
-		var metadataObj map[string]interface{}
-		if err := common.Unmarshal(aux.Metadata, &metadataObj); err == nil {
-			t.Metadata = metadataObj
+		var explicitMetadata map[string]interface{}
+		if err := common.Unmarshal(aux.Metadata, &explicitMetadata); err == nil {
+			for key, value := range explicitMetadata {
+				metadataObj[key] = value
+			}
 		}
+	}
+	if len(metadataObj) > 0 {
+		t.Metadata = metadataObj
 	}
 
 	return nil
+}
+
+func isTaskSubmitReqKnownJSONField(field string) bool {
+	switch field {
+	case "prompt", "model", "mode", "image", "images", "size", "resolution", "duration", "seconds", "input_reference", "metadata":
+		return true
+	default:
+		return false
+	}
 }
 func (t *TaskSubmitReq) UnmarshalMetadata(v any) error {
 	metadata := t.Metadata

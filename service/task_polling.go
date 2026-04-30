@@ -364,10 +364,14 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	if privateData.Key != "" {
 		key = privateData.Key
 	}
-	resp, err := adaptor.FetchTask(baseURL, key, map[string]any{
+	fetchBody := map[string]any{
 		"task_id": task.GetUpstreamTaskID(),
 		"action":  task.Action,
-	}, proxy)
+	}
+	if task.PrivateData.UpstreamKind != "" {
+		fetchBody["upstream_kind"] = task.PrivateData.UpstreamKind
+	}
+	resp, err := adaptor.FetchTask(baseURL, key, fetchBody, proxy)
 	if err != nil {
 		return fmt.Errorf("fetchTask failed for task %s: %w", taskId, err)
 	}
@@ -450,6 +454,13 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		} else if taskResult.Url != "" {
 			// Direct upstream URL (e.g. Kling, Ali, Doubao, etc.)
 			task.PrivateData.ResultURL = taskResult.Url
+		} else if task.PrivateData.UpstreamKind == "image" {
+			// Image async: first success poll may have empty TaskInfo.Url; parse URL from raw response before video proxy fallback.
+			if imgURL := model.ExtractImageURLFromJSONBytes(responseBody); imgURL != "" {
+				task.PrivateData.ResultURL = imgURL
+			} else {
+				task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
+			}
 		} else {
 			// No URL from adaptor — construct proxy URL using public task ID
 			task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
@@ -745,9 +756,9 @@ func submitWaitingHunyuanTask(ctx context.Context, channelId int, task *model.Ta
 	respBody, _ := io.ReadAll(resp.Body)
 	var wrapper struct {
 		Response struct {
-			JobId     string `json:"JobId"`
-			Code      int    `json:"Code,omitempty"`
-			Message   string `json:"Message,omitempty"`
+			JobId   string `json:"JobId"`
+			Code    int    `json:"Code,omitempty"`
+			Message string `json:"Message,omitempty"`
 		} `json:"Response"`
 	}
 	if err := common.Unmarshal(respBody, &wrapper); err != nil {

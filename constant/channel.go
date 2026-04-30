@@ -56,6 +56,7 @@ const (
 	ChannelTypeReplicate      = 56
 	ChannelTypeCodex          = 57
 	ChannelTypeHunyuanVideo   = 58 // 混元生视频
+	ChannelTypePingXingShiJie = 59
 	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
 )
@@ -119,7 +120,8 @@ var ChannelBaseURLs = []string{
 	"https://api.openai.com",                    //55
 	"https://api.replicate.com",                 //56
 	"https://chatgpt.com",                       //57
-	"https://vclm.tencentcloudapi.com",       //58 - 混元生视频
+	"https://vclm.tencentcloudapi.com",          //58 - 混元生视频
+	"https://api.pingxingshijie.cn",             //59 PingXingShiJie
 }
 
 var ChannelTypeNames = map[int]string{
@@ -178,6 +180,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeReplicate:      "Replicate",
 	ChannelTypeCodex:          "Codex",
 	ChannelTypeHunyuanVideo:   "HunyuanVideo",
+	ChannelTypePingXingShiJie: "PingXingShiJie",
 }
 
 func GetChannelTypeName(channelType int) string {

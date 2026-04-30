@@ -28,12 +28,18 @@ import (
 // ============================
 
 type ContentItem struct {
-	Type     string    `json:"type,omitempty"`
-	Text     string    `json:"text,omitempty"`
-	ImageURL *MediaURL `json:"image_url,omitempty"`
-	VideoURL *MediaURL `json:"video_url,omitempty"`
-	AudioURL *MediaURL `json:"audio_url,omitempty"`
-	Role     string    `json:"role,omitempty"`
+	Type      string        `json:"type,omitempty"`
+	Text      string        `json:"text,omitempty"`
+	ImageURL  *MediaURL     `json:"image_url,omitempty"`
+	VideoURL  *MediaURL     `json:"video_url,omitempty"`
+	AudioURL  *MediaURL     `json:"audio_url,omitempty"`
+	Role      string        `json:"role,omitempty"`
+	DraftTask *DraftTaskRef `json:"draft_task,omitempty"`
+}
+
+// DraftTaskRef is the nested object for content items with type "draft_task" (Seedance draft-to-video).
+type DraftTaskRef struct {
+	ID string `json:"id"`
 }
 
 type MediaURL struct {
@@ -294,6 +300,13 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 		r.Duration = lo.ToPtr(dto.IntValue(sec))
 	}
 
+	// Ark API: draft_task items must not be mixed with other content types (e.g. text, image_url).
+	// convertToRequestPayload normally appends prompt as text; skip that when content uses draft_task.
+	if contentHasDraftTask(r.Content) {
+		r.Content = lo.Reject(r.Content, func(c ContentItem, _ int) bool { return c.Type == "text" })
+		return &r, nil
+	}
+
 	r.Content = lo.Reject(r.Content, func(c ContentItem, _ int) bool { return c.Type == "text" })
 	r.Content = append(r.Content, ContentItem{
 		Type: "text",
@@ -301,6 +314,15 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 	})
 
 	return &r, nil
+}
+
+func contentHasDraftTask(items []ContentItem) bool {
+	for _, c := range items {
+		if c.Type == "draft_task" {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {

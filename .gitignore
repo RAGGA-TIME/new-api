@@ -32,3 +32,6 @@ data/
 .test
 token_estimator_test.go
 skills-lock.json
+
+# Local copy of vendor API doc; not tracked (example URLs may trip GitHub push protection)
+Pingxingshijie-AI接口.md

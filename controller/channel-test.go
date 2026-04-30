@@ -122,6 +122,11 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			requestPath = "/v1/images/generations"
 		}
 
+		// PingXingShiJie: sync image models use OpenAI image relay; text uses chat (Volc-style upstream via adaptor mapping).
+		if channel.Type == constant.ChannelTypePingXingShiJie && strings.Contains(strings.ToLower(testModel), "seedream") {
+			requestPath = "/v1/images/generations"
+		}
+
 		// responses-only models
 		if strings.Contains(strings.ToLower(testModel), "codex") {
 			requestPath = "/v1/responses"

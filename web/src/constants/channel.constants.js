@@ -194,6 +194,11 @@ export const CHANNEL_OPTIONS = [
     color: 'teal',
     label: '混元生视频',
   },
+  {
+    value: 59,
+    color: 'blue',
+    label: '平行视界',
+  },
 ];
 
 // Channel types that support upstream model list fetching in UI.
