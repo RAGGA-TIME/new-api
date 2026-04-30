@@ -1,409 +1,899 @@
-# PingXingShiJie（渠道 59）下游 API 参考
+## 全局公共参数
+#### 全局Header参数
+参数名 | 示例值 | 参数描述
+--- | --- | ---
+暂无参数
+#### 全局Query参数
+参数名 | 示例值 | 参数描述
+--- | --- | ---
+暂无参数
+#### 全局Body参数
+参数名 | 示例值 | 参数描述
+--- | --- | ---
+暂无参数
+#### 全局认证方式
+```text
+noauth
+```
+#### 全局预执行脚本
+```javascript
+暂无预执行脚本
+```
+#### 全局后执行脚本
+```javascript
+暂无后执行脚本
+```
+## /AI接口
+```text
+认证使用在header中加入 Authorization:Bearer秘钥
+```
+#### Header参数
+参数名 | 示例值 | 参数描述
+--- | --- | ---
+暂无参数
+#### Query参数
+参数名 | 示例值 | 参数描述
+--- | --- | ---
+暂无参数
+#### Body参数
+参数名 | 示例值 | 参数描述
+--- | --- | ---
+暂无参数
+#### 认证方式
+```text
+noauth
+```
+#### 预执行脚本
+```javascript
+暂无预执行脚本
+```
+#### 后执行脚本
+```javascript
+暂无后执行脚本
+```
+## /AI接口/视频生成
+```text
+# 模型id支持:
+- doubao-seedance-1-0-pro-fast-251015
+- doubao-seedance-1-5-pro-251215
+- doubao-seedance-2-0-fast-260128
+- doubao-seedance-2-0-260128
 
-本文档描述 **经本网关（new-api）** 访问平行视界能力时的 HTTP 接口：请求参数、默认值、取值范围说明、成功/失败响应与字段含义。  
-上游原始规范见厂商文档（本地可参考 `Pingxingshijie-AI接口.md`，默认不纳入版本库以免示例链接触发密钥扫描）。网关将请求转发至渠道配置的 Base URL（默认 `https://api.pingxingshijie.cn`），并对异步任务做统一落库与轮询。
+[参考文档](https://www.volcengine.com/docs/82379/1520757?lang=zh)
+# content参数
+输入给模型，生成视频的信息，支持文本、图片、音频、视频。支持以下几种组合：
+- 文本
+- 文本（可选）+ 图片
+- 文本（可选）+ 视频
+- 文本（可选）+ 图片 + 音频
+- 文本（可选）+ 图片 + 视频
+- 文本（可选）+ 视频 + 音频
+- 文本（可选）+ 图片 + 视频 + 音频
 
-**相关文档**
+### **注意**
+- **图生视频-首帧、图生视频-首尾帧、多模态参考生视频（包括参考图、视频、音频）为 3 种互斥场景，不可混用。**
+- 多模态参考生视频可通过提示词指定参考图片作为首帧/尾帧，间接实现“首尾帧+多模态参考”效果。若需严格保障首尾帧和指定图片一致，优先使用图生视频-首尾帧（配置 role 为 first_frame / last_frame）。
 
-- [OpenAI 兼容性说明](./pingxingshijie-openai-compatibility.md)
-
----
-
-## 1. 通用约定
-
-### 1.1 认证与请求头
-
-| 参数名 | 位置 | 必填 | 值范围 / 格式 | 默认值 | 含义 |
-|--------|------|------|----------------|--------|------|
-| `Authorization` | Header | 是 | `Bearer <token>` | — | 与本系统其它 API 一致的访问令牌 |
-| `Content-Type` | Header | POST 时建议固定 | `application/json` | — | JSON 请求体 |
-| `Accept` | Header | 否 | `application/json` | — | 响应一般为 JSON |
-
-**说明**：下列路由挂在 `router/video-router.go` 的 `/v1` 分组上，使用 **Token 认证** + **Distribute（按模型选渠道）**。调用方必须在渠道中配置 **渠道类型 59（PingXingShiJie）**，且令牌对该渠道上的 **model** 有权限。
-
-### 1.2 模型与选路（Distributor）
-
-| 参数名 | 位置 | 必填 | 含义 |
-|--------|------|------|------|
-| `model` | Body（JSON） | 对 **POST 提交类**接口为 **是**（分发器强校验） | 与后台渠道/模型配置一致的模型 ID；用于选择渠道与映射上游模型名 |
-
-**说明**：`GET` 查询任务状态类接口 **不需要** 在 Body 中带 `model`（分发器对对应路径 `shouldSelectChannel = false`）。
-
-### 1.3 常见 HTTP 状态码（任务类接口）
-
-| HTTP | 含义（摘要） |
-|------|----------------|
-| 200 | 成功（GET/POST 业务成功） |
-| 400 | 请求体非法、缺少 `model`/`prompt`、任务不存在等 |
-| 401 | 未授权或 Token 无效 |
-| 402 / 403 / 429 | 额度、权限、限流等（与本系统全局策略一致） |
-| 5xx | 网关或上游异常 |
-
-### 1.4 统一错误响应 Body（任务类失败时）
-
-业务错误通过 `dto.TaskError` 返回（常见字段如下）。
-
-| 字段名 | 类型 | 含义 |
-|--------|------|------|
-| `code` | string | 机器可读错误码，如 `invalid_request`、`get_channel_failed`、`task_not_exist` |
-| `message` | string | 人类可读说明 |
-| `data` | any | 附加数据，可为 `null` |
-
-**说明**：部分场景下上游返回 HTTP 200 但 JSON `code != 0`，网关会转换为任务错误，不视为成功。
-
-### 1.5 成功提交时的附加响应头
-
-| 头名称 | 含义 |
-|--------|------|
-| `X-New-Api-Other-Ratios` | JSON 字符串：计费相关的其它倍率（如视频含视频输入时的 `video_input` 等），用于客户端或调试观测 |
-
-### 1.6 文本对话（Chat Completions）
-
-| 项目 | 说明 |
-|------|------|
-| 客户端路由 | 与其它渠道一致，使用全局 **`POST /v1/chat/completions`**（见 `router/relay-router.go`），认证与分组规则不变。 |
-| 网关 → 上游 | 渠道类型 **58** 复用 **Volcengine** adaptor 做请求/鉴权/部分响应处理；文本上游路径为 **`{Base URL}/v2/chat/completions`**（与视频/图等 **`/v2/*`** 同一 API 族）。**不要**使用 `{Base URL}/v1/chat/completions` 或 `/api/v3/chat/completions`：在该域名下会返回 HTTP 400「接口不存在」。Base URL 默认 `https://api.pingxingshijie.cn`。 |
-| `model` | Body 必填；值为控制台/方舟侧 **endpoint 模型 ID**（与后台模型映射一致）。 |
-| 响应包装 | 若上游 JSON **根级含 `code`**（含 **`/v2/chat/completions`** 业务错误如 **`{"code":401,"message":"..."}`**），网关在 **非流式** 下会：对 **`code != 0`** 直接返回对应 HTTP 状态与文案；对 **`code == 0`** 且含 **`data`** 时解包 **`data`** 后再按 OpenAI Chat Completion 解析。无根级 **`code`** 的纯 OpenAI 形体会原样解析。流式（SSE）仍透传上游字节流（若上游对流也包装，需客户端或后续版本单独适配）。 |
-| 后台「测试渠道」 | 已支持 58：模型名 **含 `seedream`**（不区分大小写）时走 **`/v1/images/generations`** 测同步图；否则默认走 **`/v1/chat/completions`** 测文本。 |
-
----
-
-## 2. 视频生成
-
-### 2.1 提交任务
-
-**`POST /v1/video/generations`**
-
-网关将 Body 解析为统一任务结构 `TaskSubmitReq`，再转换为上游 `/v2/video/generations` 所需的 Ark 形请求（`content` 数组 + 顶层参数）。**未显式设置 `generate_audio` 时，网关会默认置为 `true`** 再转发上游。
-
-#### 2.1.1 Body 顶层字段（网关 `TaskSubmitReq`）
-
-| 参数名 | 类型 | 必填 | 默认值 | 值范围 / 说明 |
-|--------|------|------|--------|----------------|
-| `model` | string | **是** | — | 须在渠道可用模型列表中；示例见 `Pingxingshijie-AI接口.md` §视频生成（如 `doubao-seedance-2-0-fast-260128` 等） |
-| `prompt` | string | **是**（非空） | — | 文生视频主提示词；会与 `metadata` 中的多模态 `content` 合并（见下） |
-| `metadata` | object | 否 | — | 与上游视频请求对齐的扩展字段；见 **2.1.2** |
-| `images` | string[] | 否 | — | 便捷图生通道：每个元素映射为一条 `type: image_url` 的 content 项（URL / Base64 / `asset://...` 等规则见上游文档） |
-| `image` | string | 否 | — | 单图；会并入 `images` |
-| `seconds` | string | 否 | — | 可解析为整数的秒数字符串，映射上游 `duration`（秒） |
-| `duration` | number | 否 | — | 与 `seconds` 二选一语义，整数秒 |
-| `size` | string | 否 | — | 其它任务类型复用字段；本链路主要尺寸信息见 `metadata` / 上游 |
-| `mode` | string | 否 | — | 预留 |
-| `input_reference` | string | 否 | — | 与其它任务类型对齐的参考图字段 |
-
-**`prompt` 与 `metadata.content` 的合并规则（实现摘要）**
-
-- 若 `metadata.content` 中已含 **`draft_task`**，则不再自动追加文本项。
-- 否则：先合并 `metadata` 解析出的 `content`/`resolution`/`ratio` 等，再追加一条 `type: text`、`text: prompt` 的条目（并过滤掉仅用于占位的旧 text 项）。
-
-**Seedance 1.5 Pro：草稿任务 ID 放大（仅 `draft_task`，不需要 `metadata.draft`）**
-
-「草稿 id 放大」只需在 **`metadata.content`** 里提供 **`type: "draft_task"`** 与 **`draft_task.id`**（指向上游已返回的 **draft 预览**任务 id，如 `cgt-...`）。**不需要**单独设置 **`metadata.draft`**；该布尔字段与「引用草稿任务 id 做放大」不是同一语义。网关仍会校验顶层 **`prompt` 非空**（可与业务无关的占位文案），但不会把 `prompt` 当作 `content` 文本发给上游。
-
-`resolution` 在 Seedance 1.5 Pro 放大场景下应为 **`720p`** 或 **`1080p`**（若误传 `480p` 等，网关会对该模型归一为合法放大档位）。其它 `metadata` 字段（如 **`watermark`**、**`return_last_frame`**）按上游支持情况原样合并。
-
-示例（下游 OpenAI 风格任务体）：
-
-```json
+### 传入单张图片要求
+- 格式：jpeg、png、webp、bmp、tiff、gif
+- 宽高比（宽/高）： (0.4, 2.5) 
+- 宽高长度（px）：(300, 6000)
+- 大小：单张图片小于 30 MB。请求体大小不超过 64 MB。大文件请勿使用Base64编码。
+- 图片数量：
+  - 图生视频-首帧：1 张
+  - 图生视频-首尾帧：2 张
+  - Seedance 2.0 & 2.0 fast 多模态参考生视频：1~9 张
+- image_url.url支持图片 URL 、图片 Base64 编码、素材 ID
+  - 图片 URL：填入图片的公网 URL。
+  - Base64 编码：将本地文件转换为 Base64 编码字符串，然后提交给大模型。遵循格式：data:image/<图片格式>;base64,<Base64编码>，注意 <图片格式> 需小写，如 data:image/png;base64,{base64_image}。
+  - 素材 ID：用于视频生成的预置素材及虚拟人像的 ID，遵循格式：asset://<ASSET_ID> 
+  - 素材ID使用格式eg:
+  
+js
 {
-  "model": "doubao-seedance-1-5-pro-251215",
-  "prompt": "Generate from draft",
-  "metadata": {
+"type": "image_url",
+"image_url": {"url": "asset://asset-20260319082447-qrrjp"},
+"role": "reference_image"
+}
+### 传入单个音频要求
+- 输入给模型的音频信息。仅 Seedance 2.0 & 2.0 fast 支持输入音频。注意不可单独输入音频，应至少包含 1 个参考视频或图片。
+- audio_url.url 支持URL 、音频 Base64 编码、素材 ID。
+    - 音频 URL：填入音频的公网 URL。
+    - Base64 编码：将本地文件转换为 Base64 编码字符串，然后提交给大模型。遵循格式：data:audio/<音频格式>;base64,<Base64编码>，注意 <音频格式> 需小写，如 data:audio/wav;base64,{base64_audio}。
+    - 素材 ID：用于视频生成的虚拟人的音频素材 ID，遵循格式：asset://<ASSET_ID>。
+- 格式：wav、mp3
+- 时长：单个音频时长 [2, 15] s，最多传入 3 段参考音频，所有音频总时长不超过 15 s。
+- 大小：单个音频不超过 15 MB，请求体大小不超过 64 MB。大文件请勿使用Base64编码。
+
+### 传入单个视频要求
+- video_url.url 支持视频URL、素材 ID。
+    - 视频 URL：填入视频的公网 URL。
+    - 素材 ID：用于视频生成的预置素材及虚拟人像视频的 ID，遵循格式：asset://<ASSET_ID>
+- 视频格式：mp4、mov。
+- 分辨率：480p、720p
+- 时长：单个视频时长 [2, 15] s，最多传入 3 个参考视频，所有视频总时长不超过 15s。
+- 尺寸：
+  - 宽高比（宽/高）：[0.4, 2.5]
+  - 宽高长度（px）：[300, 6000]
+  - 画面像素（宽 × 高）：[409600, 927408] ，示例：
+    - 画面尺寸 640×640=409600 满足最小值 ；
+    - 画面尺寸 834×1112=927408 满足最大值。
+- 大小：单个视频不超过 50 MB。
+- 帧率 (FPS)：[24, 60] 
+
+# resolution 参数
+
+视频分辨率，取值范围：
+- 480p
+- 720p
+
+# ratio 参数
+生成视频的宽高比例。不同宽高比对应的宽高像素值见下方表格。
+- 16:9 
+- 4:3
+- 1:1
+- 3:4
+- 9:16
+- 21:9
+- adaptive：根据输入自动选择最合适的宽高比
+## adaptive 适配规则
+- 当配置 ratio 为 adaptive 时，模型会根据生成场景自动适配宽高比；实际生成的视频宽高比可通过 查询视频生成任务 API 返回的 ratio 字段获取。
+- 文生视频：根据输入的提示词，智能选择最合适的宽高比。
+- 首帧 / 首尾帧生视频：根据上传的首帧图片比例，自动选择最接近的宽高比。
+- 多模态参考生视频：根据用户提示词意图判断，如果是首帧生视频/编辑视频/延长视频，以该图片/视频为准选择最接近的宽高比；否则，以传入的第一个媒体文件为准（优先级：视频＞图片）选择最接近的宽高比。
+
+
+![image.png](https://img.cdn.apipost.cn/client/user/272223/avatar/78805a221a988e79ef3f42d7c5bfd41869b92890cc886.png "image.png")
+
+# token测算方式
+
+![image.png](https://img.cdn.apipost.cn/client/user/272223/avatar/78805a221a988e79ef3f42d7c5bfd41869b944ce4cb98.png "image.png")
+```
+#### 接口状态
+> 已完成
+
+#### 接口URL
+> https://api.pingxingshijie.cn/v2/video/generations
+
+#### 请求方式
+> POST
+
+#### Content-Type
+> json
+
+#### 请求Header参数
+参数名 | 示例值 | 参数类型 | 是否必填 | 参数描述
+--- | --- | --- | --- | ---
+Authorization | Bearer sk-*** | String | 是 | -
+#### 请求Body参数
+```javascript
+{
+    "model": "doubao-seedance-2-0-fast-260128",
     "content": [
-      {
-        "type": "draft_task",
-        "draft_task": {
-          "id": "cgt-20260416103233-xccct"
+        {
+            "type": "text",
+            "text": "全程使用视频1的第一视角构图，全程使用音频1作为背景音乐。第一人称视角果茶宣传广告，seedance牌「苹苹安安」苹果果茶限定款；首帧为图片1，你的手摘下一颗带晨露的阿克苏红苹果，轻脆的苹果碰撞声；2-4 秒：快速切镜，你的手将苹果块投入雪克杯，加入冰块与茶底，用力摇晃，冰块碰撞声与摇晃声卡点轻快鼓点，背景音：「鲜切现摇」；4-6 秒：第一人称成品特写，分层果茶倒入透明杯，你的手轻挤奶盖在顶部铺展，在杯身贴上粉红包标，镜头拉近看奶盖与果茶的分层纹理；6-8 秒：第一人称手持举杯，你将图片2中的果茶举到镜头前（模拟递到观众面前的视角），杯身标签清晰可见，背景音「来一口鲜爽」，尾帧定格为图片3。背景声音统一为女生音色。"
+        },
+        {
+            "type": "image_url",
+            "image_url": {
+                "url": "asset://asset-20260319082447-qrrjp"
+            },
+            "role": "reference_image"
+        },
+        {
+            "type": "image_url",
+            "image_url": {
+                "url": "https://ark-project.tos-cn-beijing.volces.com/doc_image/r2v_tea_pic1.jpg"
+            },
+            "role": "reference_image"
+        },
+        {
+            "type": "image_url",
+            "image_url": {
+                "url": "https://ark-project.tos-cn-beijing.volces.com/doc_image/r2v_tea_pic2.jpg"
+            },
+            "role": "reference_image"
+        },
+        {
+            "type": "video_url",
+            "video_url": {
+                "url": "https://ark-project.tos-cn-beijing.volces.com/doc_video/r2v_tea_video1.mp4"
+            },
+            "role": "reference_video"
+        },
+        {
+            "type": "audio_url",
+            "audio_url": {
+                "url": "https://ark-project.tos-cn-beijing.volces.com/doc_audio/r2v_tea_audio1.mp3"
+            },
+            "role": "reference_audio"
         }
-      }
     ],
+    "generate_audio": true,
+    "ratio": "16:9",
+    "duration": 11,
     "watermark": false,
-    "resolution": "720p",
-    "return_last_frame": true
-  }
+    "resolution": "720p"
 }
 ```
-
-#### 2.1.2 `metadata` 内常用字段（与上游 `requestPayload` 对齐）
-
-下列字段由网关合并进上游 JSON（与 `Pingxingshijie-AI接口.md` 中 POST body 一致；具体枚举与约束以该文档为准）。
-
-| 参数名 | 类型 | 必填 | 默认值 | 含义 / 值范围（摘要） |
-|--------|------|------|--------|------------------------|
-| `content` | array | 条件必填 | — | 多模态条目：`type` 为 `text` \| `image_url` \| `video_url` \| `audio_url` \| `draft_task` 等；结构见上游文档 |
-| `resolution` | string | 视模型而定 | 上游默认如 `720p` | 如 `480p`、`720p` |
-| `ratio` | string | 视模型而定 | — | 如 `16:9`、`9:16`、`adaptive` 等 |
-| `duration` | number | 视模型而定 | — | 整数秒；Seedance 2.0 等范围见上游文档（如 `[4,15]` 或 `-1`） |
-| `generate_audio` | boolean | 否 | **网关默认 `true`** | 是否生成与画面对齐的声音；若客户端在 `metadata` 中显式传入，则以客户端为准 |
-| `watermark` | boolean | 否 | — | 是否水印 |
-| `draft` | boolean | 否 | — | 草稿任务相关 |
-| `return_last_frame` | boolean | 否 | — | 是否返回尾帧等（BoolValue） |
-| `service_tier` | string | 否 | — | 服务层级 |
-| `execution_expires_after` | number | 否 | — | 执行过期（IntValue） |
-| `frames` / `seed` | number | 否 | — | 帧数、随机种子等 |
-| `camera_fixed` | boolean | 否 | — | 相机固定 |
-| `tools` | array | 否 | — | 工具声明 |
-| `callback_url` | string | 否 | — | 回调 URL |
-
-**计费侧**：若 `metadata.content` 中存在 **视频输入**（`video_url` 等），网关可能对模型应用 **`video_input` 倍率**（见渠道侧配置与 `pingxingshijie` 常量中的映射）。
-
-#### 2.1.3 成功响应 HTTP 200 — Body（`dto.OpenAIVideo`）
-
-提交成功后返回 **网关公开任务 ID**（**不**直接暴露上游 `cgt-...` 在对外 id 字段中；上游 ID 存于任务私有数据用于轮询）。
-
-| 字段名 | 类型 | 含义 |
-|--------|------|------|
-| `id` | string | 公开任务 ID（与 `task_id` 相同语义） |
-| `task_id` | string | 与 `id` 一致，兼容字段 |
-| `object` | string | 固定为 `video` |
-| `model` | string | 请求中的业务模型名（映射前/后以网关实现为准，一般为客户端传入的模型别名） |
-| `status` | string | 初始多为 `queued`（`dto.VideoStatusQueued`） |
-| `progress` | number | 初始多为 `0` |
-| `created_at` | number | Unix 时间戳（秒） |
-
-**说明**：客户端应使用返回的 **`id` 或 `task_id`** 作为后续 **GET 查询** 的路径参数。
-
----
-
-### 2.2 查询视频任务
-
-**`GET /v1/video/generations/:task_id`**
-
-| 参数名 | 位置 | 必填 | 含义 |
-|--------|------|------|------|
-| `task_id` | Path | 是 | 提交接口返回的 **公开** `task_id` |
-
-**无 Body**。
-
-#### 成功响应 HTTP 200 — Body（`dto.OpenAIVideo`）
-
-| 字段名 | 类型 | 含义 |
-|--------|------|------|
-| `id` | string | 公开任务 ID |
-| `task_id` | string | 同 `id` |
-| `object` | string | `video` |
-| `model` | string | 任务属性中的原始模型名 |
-| `status` | string | `queued` \| `in_progress` \| `completed` \| `failed` \| `unknown`（由内部状态映射） |
-| `progress` | number | 0–100，来自内部进度字符串 |
-| `created_at` | number | 创建时间戳（秒） |
-| `completed_at` | number | 更新时间戳（秒），有则返回 |
-| `metadata` | object | 可选；其中常见 **`url`** 为视频可播放地址（来自上游 `content.video_url`） |
-| `error` | object | 失败时存在：`message`、`code` |
-
----
-
-### 2.3 OpenAI 风格视频路由（可选）
-
-| 接口 | 方法 | 说明 |
-|------|------|------|
-| `/v1/videos` | POST | 提交；Body 仍通过任务通道解析（multipart 等以网关实现为准） |
-| `/v1/videos/:task_id` | GET | 查询；响应形状与 **2.2** 相同（`OpenAIVideo`） |
-
-模型、Body 字段与 **2.1** 同源逻辑，仅路径不同。
-
----
-
-### 2.4 视频 Remix（可选）
-
-**`POST /v1/videos/:video_id/remix`**
-
-| 参数名 | 位置 | 必填 | 含义 |
-|--------|------|------|------|
-| `video_id` | Path | 是 | **本系统内**已有任务的公开 ID（用于锁定渠道与继承计费上下文） |
-| Body | JSON | 是 | 与其它任务提交类似的 `TaskSubmitReq`（`model`、`prompt`、`metadata` 等） |
-
-成功/失败响应与任务提交通道一致；详细约束见 `relay/relay_task.go` 中 `ResolveOriginTask`。
-
----
-
-## 3. 图片生成（异步）
-
-### 3.1 提交任务
-
-**`POST /v1/images/generations/async`**
-
-Body **原样转发**为上游 `POST /v2/image/generations` 的 JSON，仅将 **`model`** 替换为映射后的上游模型名。校验走 `ValidateBasicTaskRequest`：**`prompt` 必填非空**，且 **`model` 必填**（用于分发）。
-
-#### 3.1.1 Body 字段（与上游 Seedream 对齐 — 摘要）
-
-完整参数、枚举与约束以 **`Pingxingshijie-AI接口.md` §提交图片生成任务** 为准。常见字段如下：
-
-| 参数名 | 类型 | 必填 | 默认值 | 含义 / 范围（摘要） |
-|--------|------|------|--------|---------------------|
-| `model` | string | **是** | — | 如 `doubao-seedream-5-0-260128`、`doubao-seedream-4-0-250828` 等 |
-| `prompt` | string | **是** | — | 文生/图生提示词 |
-| `image` | string 或 string[] | 视模式 | — | 参考图 URL 列表等（见上游） |
-| `sequential_image_generation` | string | 视模型 | — | 如 `auto` |
-| `sequential_image_generation_options` | object | 视模型 | — | 如 `max_images` |
-| `size` | string | 视模型 | — | 如 `2K` |
-| `output_format` | string | 视模型 | — | 如 `png` |
-| `watermark` | boolean | 视模型 | — | 是否水印 |
-
-#### 3.1.2 成功响应 HTTP 200
-
-为兼容现有任务通道，提交成功时 Body 仍使用 **`dto.OpenAIVideo`** 外壳（`object: video`），便于客户端统一处理异步任务：
-
-| 字段名 | 类型 | 含义 |
-|--------|------|------|
-| `id` | string | **公开任务 ID**（用于 GET 查询，**不是**上游 `I20...` 任务号） |
-| `task_id` | string | 同 `id` |
-| `object` | string | `video`（历史兼容） |
-| `model` | string | 请求模型名 |
-| `status` | string | 初始多为 `queued` |
-| `progress` | number | 初始多为 `0` |
-| `created_at` | number | Unix 秒 |
-
-**说明**：上游返回的图片任务 ID 保存在服务端任务记录中，用于轮询上游 `GET /v2/image/generations/tasks/{id}`，**客户端只需保存公开 `task_id`**。
-
----
-
-### 3.2 查询图片任务
-
-**`GET /v1/images/generations/:task_id`**
-
-| 参数名 | 位置 | 必填 | 含义 |
-|--------|------|------|------|
-| `task_id` | Path | 是 | 提交接口返回的 **公开** 任务 ID |
-
-#### 成功响应 HTTP 200 — Body（扩展 JSON）
-
-| 字段名 | 类型 | 含义 |
-|--------|------|------|
-| `object` | string | 固定 `pingxingshijie.image.generation.task` |
-| `id` | string | 公开任务 ID |
-| `task_id` | string | 同 `id` |
-| `status` | string | `queued` \| `in_progress` \| `completed` \| `failed` \| `unknown` |
-| `progress` | string | 内部进度，如 `50%` |
-| `model` | string | 原始模型名 |
-| `created_at` | number | 秒级时间戳 |
-| `updated_at` | number | 秒级时间戳 |
-| `url` | string | 成功时可能存在：结果图地址（来自上游 `content.image_url`） |
-| `error` | object | 失败时可能存在：`message`、`code` |
-
----
-
-## 4. 素材（Asset）异步
-
-### 4.1 提交上传任务
-
-**`POST /v1/assets/upload`**
-
-Body **原样转发**至上游 `POST /v2/asset/upload`。分发器要求 JSON 中能解析出 **`model`**；若省略，则使用占位模型名 **`pingxingshijie-asset`** 仅用于选路。
-
-#### 4.1.1 Body 字段（与上游一致 — 摘要）
-
-详见 **`Pingxingshijie-AI接口.md` §素材上传**。
-
-| 参数名 | 类型 | 必填 | 默认值 | 含义 / 范围（摘要） |
-|--------|------|------|--------|---------------------|
-| `model` | string | 否（分发器） | `pingxingshijie-asset` | 若省略则由网关填占位符；建议在渠道中允许该占位模型或显式传模型 |
-| `image_url` | string | **是**（上游） | — | 素材来源 URL（或其它上游允许的形式） |
-| `asset_type` | string | **是**（上游） | — | `Image` \| `Video` \| `Audio` |
-
-**网关行为摘要**
-
-- 转发给上游的 JSON 为客户端 **原始请求体**（`image_url`、`asset_type` 等不会被网关改写）。
-- 分发器需要 `model` 选渠道；省略时使用占位 **`pingxingshijie-asset`**。
-- 适配器在校验阶段可能为内部 `TaskSubmitReq` 填入占位 `prompt`（如 `asset-upload`），**仅用于本网关任务校验/计费上下文**，**不要求**客户端在 Body 中携带 `prompt`。
-
-#### 4.1.2 成功响应 HTTP 200
-
-| 字段名 | 类型 | 含义 |
-|--------|------|------|
-| `id` | string | 公开任务 ID |
-| `task_id` | string | 同 `id` |
-| `asset_id` | string | 上游素材 ID（用于后续 `asset://...` 引用） |
-| `object` | string | `pingxingshijie.asset.upload` |
-
----
-
-### 4.2 查询素材任务
-
-**`GET /v1/assets/:task_id`**
-
-| 参数名 | 位置 | 必填 | 含义 |
-|--------|------|------|------|
-| `task_id` | Path | 是 | 提交返回的 **公开** 任务 ID |
-
-服务端周期性以 `POST /v2/asset/status`（body: `{"asset_id":"<上游ID>"}`）轮询上游；客户端只需轮询本 GET。
-
-#### 成功响应 HTTP 200 — Body
-
-| 字段名 | 类型 | 含义 |
-|--------|------|------|
-| `object` | string | `pingxingshijie.asset.task` |
-| `id` | string | 公开任务 ID |
-| `task_id` | string | 同 `id` |
-| `status` | string | 内部任务状态枚举字符串，如 `QUEUED`、`IN_PROGRESS`、`SUCCESS`、`FAILURE` 等 |
-| `progress` | string | 如 `50%`、`100%` |
-| `created_at` | number | 秒 |
-| `updated_at` | number | 秒 |
-| `data` | object | 最近一次上游 **envelope 内层 data** 快照（含 `Result.Status`、`Result.URL` 等，字段名与上游一致） |
-| `fail_reason` | string | 失败原因（若有） |
-
-**上游 `Result.Status` 语义（轮询侧）**：`Processing` → 进行中；`Active` → 成功可用；`Failed` → 失败（详见上游文档）。
-
----
-
-## 5. 内部任务状态与对外 `status` 映射（摘要）
-
-| 内部 `TaskStatus` | 视频/图片 GET 中 `status`（`ToVideoStatus`） |
-|-------------------|-----------------------------------------------|
-| `QUEUED` / `SUBMITTED` | `queued` |
-| `IN_PROGRESS` | `in_progress` |
-| `SUCCESS` | `completed` |
-| `FAILURE` | `failed` |
-| 其它 | `unknown` |
-
-素材 GET 的 `status` 字段为 **内部枚举字符串**，与上表不完全相同，请以 **4.2** 为准。
-
----
-
-## 6. curl 示例（最佳实践）
-
-```bash
-export GATEWAY='https://your-new-api.example.com'
-export TOKEN='your-token'
-
-# 视频提交
-curl -sS -X POST "${GATEWAY}/v1/video/generations" \
-  -H "Authorization: Bearer ${TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{"model":"doubao-seedance-2-0-fast-260128","prompt":"Hello","metadata":{"resolution":"720p","ratio":"16:9"}}'
-
-# 视频查询（TASK_ID 为返回的 id/task_id）
-curl -sS "${GATEWAY}/v1/video/generations/${TASK_ID}" -H "Authorization: Bearer ${TOKEN}"
-
-# 图片异步提交
-curl -sS -X POST "${GATEWAY}/v1/images/generations/async" \
-  -H "Authorization: Bearer ${TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{"model":"doubao-seedream-4-0-250828","prompt":"A red mug","size":"2K","output_format":"png","watermark":false}'
-
-# 素材上传
-curl -sS -X POST "${GATEWAY}/v1/assets/upload" \
-  -H "Authorization: Bearer ${TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{"model":"pingxingshijie-asset","image_url":"https://example.com/a.jpg","asset_type":"Image"}'
+参数名 | 示例值 | 参数类型 | 是否必填 | 参数描述
+--- | --- | --- | --- | ---
+model | doubao-seedance-2-0-fast-260128 | String | 是 | 模型名称 doubao-seedance-2-0-fast-260128或doubao-seedance-2-0-260128
+content | - | Array | 是 | -
+content.type | text | String | 是 | -
+content.text | 全程使用视频1的第一视角构图，全程使用音频1作为背景音乐。第一人称视角果茶宣传广告，seedance牌「苹苹安安」苹果果茶限定款；首帧为图片1，你的手摘下一颗带晨露的阿克苏红苹果，轻脆的苹果碰撞声；2-4 秒：快速切镜，你的手将苹果块投入雪克杯，加入冰块与茶底，用力摇晃，冰块碰撞声与摇晃声卡点轻快鼓点，背景音：「鲜切现摇」；4-6 秒：第一人称成品特写，分层果茶倒入透明杯，你的手轻挤奶盖在顶部铺展，在杯身贴上粉红包标，镜头拉近看奶盖与果茶的分层纹理；6-8 秒：第一人称手持举杯，你将图片2中的果茶举到镜头前（模拟递到观众面前的视角），杯身标签清晰可见，背景音「来一口鲜爽」，尾帧定格为图片3。背景声音统一为女生音色。 | String | 是 | -
+generate_audio | true | Boolean | 是 | 控制生成的视频是否包含与画面同步的声音。
+ratio | 16:9 | String | 是 | 生成视频的宽高比例
+duration | 11 | Integer | 是 | 生成视频时长，仅支持整数，单位：秒。
+2.0模型取值范围：
+- [4,15] 或设置为-1
+watermark | false | Boolean | 是 | 水印
+resolution | 720p | String | 是 | 视频分辨率Seedance 2.0 & 2.0 fast  默认值：720p
+#### 认证方式
+```text
+noauth
 ```
+#### 预执行脚本
+```javascript
+暂无预执行脚本
+```
+#### 后执行脚本
+```javascript
+暂无后执行脚本
+```
+#### 成功响应示例
+```javascript
+{
+	"code": 0,
+	"msg": "ok",
+	"data": {
+		"id": "cgt-20260317165706-4lpxk"
+	}
+}
+```
+## /AI接口/视频任务查询
+```text
+暂无描述
+```
+#### 接口状态
+> 已完成
 
----
+#### 接口URL
+> https://api.pingxingshijie.cn/v2/video/generations/tasks/cgt-202603******-rxpvn
 
-## 7. 路径一览
+#### 请求方式
+> GET
 
-| 能力 | 方法 | 路径 |
-|------|------|------|
-| 视频提交 | POST | `/v1/video/generations` |
-| 视频查询 | GET | `/v1/video/generations/:task_id` |
-| 视频（OpenAI 形） | POST/GET | `/v1/videos`、`/v1/videos/:task_id` |
-| 视频 Remix | POST | `/v1/videos/:video_id/remix` |
-| 图片异步提交 | POST | `/v1/images/generations/async` |
-| 图片异步查询 | GET | `/v1/images/generations/:task_id` |
-| 素材上传 | POST | `/v1/assets/upload` |
-| 素材查询 | GET | `/v1/assets/:task_id` |
-| 视频内容代理 | GET | `/v1/videos/:task_id/content`（`TokenOrUserAuth`，见 `video-router`） |
+#### Content-Type
+> none
 
----
+#### 请求Header参数
+参数名 | 示例值 | 参数类型 | 是否必填 | 参数描述
+--- | --- | --- | --- | ---
+Authorization | Bearer | String | 是 | -
+#### 认证方式
+```text
+noauth
+```
+#### 预执行脚本
+```javascript
+暂无预执行脚本
+```
+#### 后执行脚本
+```javascript
+暂无后执行脚本
+```
+#### 成功响应示例
+```javascript
+{
+	"code": 0,
+	"msg": "ok",
+	"data": {
+		"id": "cgt-202603******-rxpvn",
+		"model": "doubao-seedance-1-0-pro-fast-251015",
+		"status": "succeeded",
+		"content": {
+"video_url": "https://ark-content-generation-cn-beijing.tos-cn-beijing.volces.com/doubao-seedance-1-0-pro-fast/example.mp4?X-Tos-Signature=REDACTED"
+		},
+		"usage": {
+			"completion_tokens": 59160,
+			"total_tokens": 59160
+		},
+		"created_at": 1773395884,
+		"updated_at": 1773395903,
+		"seed": 97660,
+		"resolution": "1080p",
+		"ratio": "16:9",
+		"frames": 29,
+		"framespersecond": 24,
+		"service_tier": "default",
+		"execution_expires_after": 172800,
+		"draft": false
+	}
+}
+```
+## /AI接口/素材上传
+```text
+## **注意**
+- 仅可使用已入库素材的 ID (Asset ID)进行视频生成，同一形象未入库素材无法使用。
+- 仅需入库推理需使用的素材，不需使用的素材请勿入库。
+- 目前已同步支持音频视频图片素材资产上传
+## **单张图片要求**
+- 格式：jpeg、png、webp、bmp、tiff、gif、heic/heif
+- 宽高比（宽/高）： (0.4, 2.5) 
+- 宽高长度（px）：(300, 6000)
+- 大小：单张图片小于 30 MB。
+## **传入单个视频要求**
+- 格式：mp4、mov
+- 分辨率：480p、720p
+- 时长：单个视频时长 [2, 15] s
+- 尺寸：
+  - 宽高比（宽/高）：[0.4, 2.5]
+  - 宽高长度（px）：[300, 6000]
+  - 总像素数：[640×640=409600, 834×1112=927408]，即宽和高的乘积符合 [409600, 927408] 的区间要求。
+- 大小：单个视频不超过 50 MB
+- 帧率 (FPS)：[24, 60] 
+## **传入单个音频要求**
+- 格式：wav、mp3
+- 时长：单个音频时长 [2, 15] s
+- 大小：单个音频不超过 15 MB
+# 警告：
+**您需确保上传的虚拟人像符合以下条件：**
+- 您合法拥有该素材，并享有完整的使用及处分权限。素材不包含未获授权的第三方商标、标识类内容。
+- 素材不得与任何自然人肖像或形象雷同，素材不存在抄袭、盗用情形，不会侵害任何第三方的人格权、知识产权等合法权益。
+- 素材不包含违反法规、违背公序良俗、危害国家安全的内容。
 
-**文档版本**：与网关实现 `relay/channel/task/pingxingshijie`、`router/video-router.go` 同步；若行为变更，请以代码为准并更新本文档。
+
+
+![image.png](https://img.cdn.apipost.cn/client/user/272223/avatar/78805a221a988e79ef3f42d7c5bfd41869c77d5668224.png "image.png")
+eg.
+
+![image.png](https://img.cdn.apipost.cn/client/user/272223/avatar/78805a221a988e79ef3f42d7c5bfd41869c77d8792410.png "image.png")
+其中提示词如下:
+js
+背景参考图片1，月白虚影闪过，公子（妆造参考图片2；人物形象严格参考图片3）旋身开合折扇，鎏金扇刃弹出，墨竹扇面翻飞，慢鼓重响 1 声；特写：折扇刃格挡反派长刀，扇骨与刀身相击，公子唇角勾轻佻笑意，眼神却冷冽，指腹轻转扇柄。；慢镜：公子侧身贴地滑步，折扇刃贴反派腿侧划过，带起一道浅痕，锦袍下摆扫过地面，玉簪轻晃。快切：公子旋身抬手，折扇刃飞射而出，擦过反派脖颈，钉入身后木柱，反派僵立不敢动。反转：身后突然传来掌风，公子旋身接掌，指尖相触时借力后跳，折扇刃从木柱飞回手中，眼神警惕。慢镜高光：公子折扇半开，扇刃抵唇侧，抬眸望向身后，碎发被风吹起，眉梢微扬，带一丝桀骜。拉镜：公子立于庭院石台上，折扇轻摇，镜头拉远，庭院四角同时浮现戴面具的黑影（持弯刀，呈合围之势）。定格：公子折扇合起一半，扇刃露鎏金锋芒，抬步向前，画面压暗，只留他的侧影和扇刃光，音效骤停。音效：折扇开合脆响 + 刃风切割声 + 慢鼓卡点（偏沉稳）。
+
+
+![image.png](https://img.cdn.apipost.cn/client/user/272223/avatar/78805a221a988e79ef3f42d7c5bfd41869c77decb8288.png "image.png")
+```
+#### 接口状态
+> 已完成
+
+#### 接口URL
+> https://api.pingxingshijie.cn/v2/asset/upload
+
+#### 请求方式
+> POST
+
+#### Content-Type
+> json
+
+#### 请求Header参数
+参数名 | 示例值 | 参数类型 | 是否必填 | 参数描述
+--- | --- | --- | --- | ---
+Authorization | Bearer | String | 是 | -
+#### 请求Body参数
+```javascript
+{
+    "image_url": "https://deep-market.tos-cn-beijing.volces.com/deepmarket/202603/69ba111259503.jpg",
+    "asset_type":"Image"
+}
+```
+参数名 | 示例值 | 参数类型 | 是否必填 | 参数描述
+--- | --- | --- | --- | ---
+image_url | https://deep-market.tos-cn-beijing.volces.com/deepmarket/202603/69ba111259503.jpg | String | 是 | 素材图片地址
+asset_type | Image | String | 是 | 支持Image Video  Audio三种类型
+#### 认证方式
+```text
+noauth
+```
+#### 预执行脚本
+```javascript
+暂无预执行脚本
+```
+#### 后执行脚本
+```javascript
+暂无后执行脚本
+```
+#### 成功响应示例
+```javascript
+{
+	"code": 0,
+	"msg": "ok",
+	"data": {
+		"ResponseMetadata": {
+			"Action": "CreateAsset",
+			"Region": "cn-beijing",
+			"RequestId": "20260319162446B5DF7E4FBBC56F78E6DA",
+			"Service": "ark",
+			"Version": "2024-01-01"
+		},
+		"Result": {
+			"Id": "asset-20260319082447-qrrjp"
+		}
+	}
+}
+```
+## /AI接口/素材状态查询
+```text
+通过此接口获取素材是否生效，直到 Active / Failed / 超时
+### 目前已知的Status状态枚举值有如下:
+- Processing  → 继续轮询
+- Active      → 返回 URL（结束）状态为 Active 后，可使用该素材 Asset ID (URI格式) 进行视频生成
+- Failed      → 返回错误
+```
+#### 接口状态
+> 已完成
+
+#### 接口URL
+> https://api.pingxingshijie.cn/v2/asset/status
+
+#### 请求方式
+> POST
+
+#### Content-Type
+> json
+
+#### 请求Header参数
+参数名 | 示例值 | 参数类型 | 是否必填 | 参数描述
+--- | --- | --- | --- | ---
+Authorization | Bearer | String | 是 | -
+#### 请求Body参数
+```javascript
+{"asset_id":"asset-20260319075230-7jqfr"}
+```
+参数名 | 示例值 | 参数类型 | 是否必填 | 参数描述
+--- | --- | --- | --- | ---
+asset_id | asset-20260319075230-7jqfr | String | 是 | 素材id
+#### 认证方式
+```text
+noauth
+```
+#### 预执行脚本
+```javascript
+暂无预执行脚本
+```
+#### 后执行脚本
+```javascript
+暂无后执行脚本
+```
+#### 成功响应示例
+```javascript
+{
+	"code": 0,
+	"msg": "ok",
+	"data": {
+		"ResponseMetadata": {
+			"Action": "GetAsset",
+			"Region": "cn-beijing",
+			"RequestId": "202603191630140FA78DC4D1524C75652C",
+			"Service": "ark",
+			"Version": "2024-01-01"
+		},
+		"Result": {
+			"AssetType": "Image",
+			"CreateTime": "2026-03-19T07:52:30Z",
+			"GroupId": "group-20260319031427-tn957",
+			"Id": "asset-20260319075230-7jqfr",
+			"Name": "",
+			"ProjectName": "default",
+			"Status": "Active",
+			"URL": "https://ark-media-asset.tos-cn-beijing.volces.com/2105684286/example.jpg?X-Tos-Signature=REDACTED",
+			"UpdateTime": "2026-03-19T07:52:33Z"
+		}
+	}
+}
+```
+参数名 | 示例值 | 参数类型 | 参数描述
+--- | --- | --- | ---
+code | 0 | Integer | -
+msg | ok | String | -
+data | - | Object | -
+data.ResponseMetadata | - | Object | -
+data.ResponseMetadata.Action | GetAsset | String | -
+data.ResponseMetadata.Region | cn-beijing | String | -
+data.ResponseMetadata.RequestId | 202603191630140FA78DC4D1524C75652C | String | -
+data.ResponseMetadata.Service | ark | String | -
+data.ResponseMetadata.Version | 2024-01-01 | String | -
+data.Result | - | Object | -
+data.Result.AssetType | Image | String | -
+data.Result.CreateTime | 2026-03-19T07:52:30Z | String | -
+data.Result.GroupId | group-20260319031427-tn957 | String | -
+data.Result.Id | asset-20260319075230-7jqfr | String | -
+data.Result.Name | - | String | -
+data.Result.ProjectName | default | String | -
+data.Result.Status | Active | String | Active为可用
+data.Result.URL | https://ark-media-asset.tos-cn-beijing.volces.com/2105684286/example.jpg?X-Tos-Signature=REDACTED | String | -
+data.Result.UpdateTime | 2026-03-19T07:52:33Z | String | -
+## /AI接口/提交图片生成任务
+```text
+## 模型ID支持
+- doubao-seedream-5-0-260128
+- doubao-seedream-4-5-251128
+- doubao-seedream-4-0-250828
+
+不同模型特性以及参数参考文档https://www.volcengine.com/docs/82379/1541523?lang=zh
+```
+#### 接口状态
+> 已完成
+
+#### 接口URL
+> https://api.pingxingshijie.cn/v2/image/generations
+
+#### 请求方式
+> POST
+
+#### Content-Type
+> json
+
+#### 请求Header参数
+参数名 | 示例值 | 参数类型 | 是否必填 | 参数描述
+--- | --- | --- | --- | ---
+Authorization | Bearer sk-*** | String | 是 | -
+#### 请求Body参数
+```javascript
+{
+	"model": "doubao-seedream-5-0-260128",
+	"prompt": "生成3张女孩和奶牛玩偶在游乐园开心地坐过山车的图片，涵盖早晨、中午、晚上",
+	"image": [
+		"https://ark-project.tos-cn-beijing.volces.com/doc_image/seedream4_imagesToimages_1.png",
+		"https://ark-project.tos-cn-beijing.volces.com/doc_image/seedream4_imagesToimages_2.png"
+	],
+	"sequential_image_generation": "auto",
+	"sequential_image_generation_options": {
+		"max_images": 3
+	},
+	"size": "2K",
+	"output_format": "png",
+	"watermark": false
+}
+```
+参数名 | 示例值 | 参数类型 | 是否必填 | 参数描述
+--- | --- | --- | --- | ---
+model | doubao-seedream-5-0-260128 | String | 是 | 模型名称
+prompt | 生成3张猫 | String | 是 | -
+image | https://ark-project.tos-cn-beijing.volces.com/doc_image/seedream4_imagesToimages_1.png | Array | 是 | -
+sequential_image_generation | auto | String | 是 | -
+sequential_image_generation_options | - | Object | 是 | -
+sequential_image_generation_options.max_images | 1 | Integer | 是 | -
+size | 2K | String | 是 | -
+output_format | png | String | 是 | -
+watermark | false | Boolean | 是 | 水印
+#### 认证方式
+```text
+noauth
+```
+#### 预执行脚本
+```javascript
+暂无预执行脚本
+```
+#### 后执行脚本
+```javascript
+暂无后执行脚本
+```
+#### 成功响应示例
+```javascript
+{
+	"code": 0,
+	"msg": "ok",
+	"data": {
+		"data": {
+			"id": "I20260401210457-4767-8dc442"
+		}
+	}
+}
+```
+参数名 | 示例值 | 参数类型 | 参数描述
+--- | --- | --- | ---
+code | 0 | Integer | -
+msg | ok | String | -
+data | - | Object | -
+data.data | - | Object | -
+data.data.id | I20260401210457-4767-8dc442 | String | 任务id
+## /AI接口/查询图片任务生成状态
+```text
+平均完成时间约30秒左右，如果超过20分钟还未完成任务，可能是与模型通讯异常，会被设置为failed
+```
+#### 接口状态
+> 已完成
+
+#### 接口URL
+> https://api.pingxingshijie.cn/v2/image/generations/tasks/I20260401205707-4573-d72831
+
+#### 请求方式
+> GET
+
+#### Content-Type
+> json
+
+#### 请求Header参数
+参数名 | 示例值 | 参数类型 | 是否必填 | 参数描述
+--- | --- | --- | --- | ---
+Authorization | Bearer sk-*** | String | 是 | -
+#### 请求Body参数
+```javascript
+
+```
+#### 认证方式
+```text
+noauth
+```
+#### 预执行脚本
+```javascript
+暂无预执行脚本
+```
+#### 后执行脚本
+```javascript
+暂无后执行脚本
+```
+#### 成功响应示例
+```javascript
+{
+	"code": 0,
+	"msg": "ok",
+	"data": {
+		"model": "doubao-seedream-5-0-260128",
+		"created": 1775048736,
+		"data": [
+			{
+		"url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedream-5-0/example.png?X-Tos-Signature=REDACTED",
+				"size": "2048x2048"
+			}
+		],
+		"usage": {
+			"generated_images": 1,
+			"output_tokens": 16384,
+			"total_tokens": 16384
+		},
+		"status": "done"
+	}
+}
+```
+#### 错误响应示例
+```javascript
+{
+	"code": 0,
+	"msg": "ok",
+	"data": {
+		"error": {
+			"code": "InputTextSensitiveContentDetected",
+			"message": "The request failed because the input text may contain sensitive information. Request id: 021775048228405beb22b84618335a214e9b1bc67d5e6c3ad7543",
+			"param": "",
+			"type": ""
+		},
+		"status": "failed"
+	}
+}
+```
+参数名 | 示例值 | 参数类型 | 参数描述
+--- | --- | --- | ---
+code | 0 | Integer | -
+msg | ok | String | -
+data | - | Object | -
+data.error | - | Object | -
+data.error.code | InputTextSensitiveContentDetected | String | -
+data.error.message | The request failed because the input text may contain sensitive information. Request id: 021775048228405beb22b84618335a214e9b1bc67d5e6c3ad7543 | String | -
+data.error.param | - | String | -
+data.error.type | - | String | -
+data.status | failed | String | -
+## /AI接口/发起字幕擦除任务
+```text
+### 接口说明
+使用 Seedance 2.0 / Seedance 2.0 fast 模型生成的视频可能包含字幕，使用本接口对视频进行字幕擦除任务提交与查询。
+
+### 流程简介
+
+**字幕擦除任务接口是异步接口，流程如下：**
+
+1. 发起字幕擦除任务
+2. 定时使用查询接口查询视频生成任务状态
+
+    1.任务 running，过段时间再查询任务状态    
+    2.任务 completed，返回视频URL，在24小时内下载生成的视频文件
+
+
+当请求的参数或鉴权信息不正确时，任务将不会被创建，接口会返回一个同步的错误响应。详见[错误码](https://www.volcengine.com/docs/6448/2300662?lang=zh)。
+
+![image.png](https://img.cdn.apipost.cn/client/user/272223/avatar/78805a221a988e79ef3f42d7c5bfd41869ddb9f05a587.png "image.png")
+
+![image.png](https://img.cdn.apipost.cn/client/user/272223/avatar/78805a221a988e79ef3f42d7c5bfd41869ddb9cdc07c4.png "image.png")
+```
+#### 接口状态
+> 已完成
+
+#### 接口URL
+> https://api.pingxingshijie.cn/v2/ark-tools/ark-erase-video-subtitle-pro
+
+#### 请求方式
+> POST
+
+#### Content-Type
+> json
+
+#### 请求Header参数
+参数名 | 示例值 | 参数类型 | 是否必填 | 参数描述
+--- | --- | --- | --- | ---
+Authorization | Bearer sk-***** | String | 是 | -
+#### 请求Body参数
+```javascript
+{
+	"video_url": "https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedance-2-0/example.mp4?X-Tos-Signature=REDACTED"
+}
+```
+参数名 | 示例值 | 参数类型 | 是否必填 | 参数描述
+--- | --- | --- | --- | ---
+video_url | https://ark-acg-cn-beijing.tos-cn-beijing.volces.com/doubao-seedance-2-0/example.mp4?X-Tos-Signature=REDACTED | String | 是 | 火山大模型生成视频源地址
+#### 认证方式
+```text
+noauth
+```
+#### 预执行脚本
+```javascript
+暂无预执行脚本
+```
+#### 后执行脚本
+```javascript
+暂无后执行脚本
+```
+#### 成功响应示例
+```javascript
+{
+	"code": 0,
+	"msg": "ok",
+	"data": {
+		"success": true,
+		"task_id": "amk-tool-ark-erase-video-subtitle-pro-92912724482",
+		"request_id": "202604141312142B93E8DC664B76B9ED08"
+	}
+}
+```
+参数名 | 示例值 | 参数类型 | 参数描述
+--- | --- | --- | ---
+code | 0 | Integer | -
+msg | ok | String | -
+data | - | Object | -
+data.success | true | Boolean | 任务是否提交成功。 
+- true：成功。 
+- false：失败。更多信息请查看错误处理。
+data.task_id | amk-tool-ark-erase-video-subtitle-pro-92912724482 | String | 任务的唯一标识，用于后续查询任务进度和结果
+data.request_id | 202604141312142B93E8DC664B76B9ED08 | String | 本次请求的唯一标识，可用于问题排查。
+#### 错误响应示例
+```javascript
+{
+	"code": 400,
+	"msg": {
+		"code": "AccessDenied",
+		"type": "Forbidden",
+		"message": "InvalidParameter.InvalidAPIKey:Get api key error from ark: Code:InvalidParameter.APIKey, Message:The specified parameter APIKey is invalid."
+	}
+}
+```
+## /AI接口/字幕擦除任务查询
+```text
+# 查询字幕擦除任务结果
+
+![image.png](https://img.cdn.apipost.cn/client/user/272223/avatar/78805a221a988e79ef3f42d7c5bfd41869ddce245b217.png "image.png")
+
+![image.png](https://img.cdn.apipost.cn/client/user/272223/avatar/78805a221a988e79ef3f42d7c5bfd41869ddce2e4fb62.png "image.png")
+```
+#### 接口状态
+> 已完成
+
+#### 接口URL
+> https://api.pingxingshijie.cn/v2/ark-tools/ark-tasks/{task_id}
+
+#### 请求方式
+> GET
+
+#### Content-Type
+> json
+
+#### 请求Header参数
+参数名 | 示例值 | 参数类型 | 是否必填 | 参数描述
+--- | --- | --- | --- | ---
+Authorization | Bearer sk-** | String | 是 | -
+#### 路径变量
+参数名 | 示例值 | 参数描述
+--- | --- | ---
+task_id | - | -
+#### 请求Body参数
+```javascript
+
+```
+#### 认证方式
+```text
+noauth
+```
+#### 预执行脚本
+```javascript
+暂无预执行脚本
+```
+#### 后执行脚本
+```javascript
+暂无后执行脚本
+```
+#### 成功响应示例
+```javascript
+{
+	"code": 0,
+	"msg": "ok",
+	"data": {
+		"success": true,
+		"task_id": "amk-tool-ark-erase-video-subtitle-pro-92912724482",
+		"task_type": "ark-erase-video-subtitle-pro",
+		"status": "completed",
+		"result": {
+			"video_url": "https://2124636113-amk-2105684286-default-041511.vod.cn-north-1.volcvideo.com/950cd9c1a4cf44f89955c5794d50baf2?preview=1&auth_key=1776230129-r0-u0-c2e85dfd8ad8c3fe88fa178db39622cb"
+		},
+		"expires_at": 1776230129,
+		"created_at": 1776143537,
+		"finished_at": 1776143729,
+		"request_id": "20260414131623C0678BF62D35DA06967F"
+	}
+}
+```
+参数名 | 示例值 | 参数类型 | 参数描述
+--- | --- | --- | ---
+code | 0 | Integer | -
+msg | ok | String | -
+data | - | Object | -
+data.success | true | Boolean | -
+data.task_id | amk-tool-ark-erase-video-subtitle-pro-92912724482 | String | -
+data.task_type | ark-erase-video-subtitle-pro | String | -
+data.status | completed | String | -
+data.result | - | Object | -
+data.result.video_url | https://2124636113-amk-2105684286-default-041511.vod.cn-north-1.volcvideo.com/950cd9c1a4cf44f89955c5794d50baf2?preview=1&auth_key=1776230129-r0-u0-c2e85dfd8ad8c3fe88fa178db39622cb | String | 擦除字幕后的视频地址
+data.expires_at | 1776230129 | Integer | -
+data.created_at | 1776143537 | Integer | -
+data.finished_at | 1776143729 | Integer | -
+data.request_id | 20260414131623C0678BF62D35DA06967F | String | -
+## /AI接口/对话(Chat) API
+```text
+对话API [参考文档](https://www.volcengine.com/docs/82379/1494384?lang=zh)
+支持的模型id:
+- doubao-seed-2-0-lite-260215
+- doubao-seed-2-0-mini-260215
+- doubao-seed-2-0-pro-260215
+```
+#### 接口状态
+> 已完成
+
+#### 接口URL
+> https://api.pingxingshijie.cn/v2/chat/completions
+
+#### 请求方式
+> POST
+
+#### Content-Type
+> json
+
+#### 请求Header参数
+参数名 | 示例值 | 参数类型 | 是否必填 | 参数描述
+--- | --- | --- | --- | ---
+Authorization | Bearer sk-** | String | 是 | -
+#### 请求Body参数
+```javascript
+{
+    "model": "doubao-seed-2-0-lite-260215",
+    "messages": [
+        {
+            "role": "user",
+            "content": "你好"
+        }
+    ],
+    "stream": true
+}
+```
+#### 认证方式
+```text
+noauth
+```
+#### 预执行脚本
+```javascript
+暂无预执行脚本
+```
+#### 后执行脚本
+```javascript
+暂无后执行脚本
+```
