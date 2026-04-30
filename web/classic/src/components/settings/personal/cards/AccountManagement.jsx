@@ -199,7 +199,7 @@ const AccountManagement = ({
           <div className='py-4'>
             <div className='grid grid-cols-1 lg:grid-cols-2 gap-4'>
               {/* 邮箱绑定 */}
-              <Card className='!rounded-xl'>
+              {/* <Card className='!rounded-xl'>
                 <div className='flex items-center justify-between gap-3'>
                   <div className='flex items-center flex-1 min-w-0'>
                     <div className='w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center mr-3 flex-shrink-0'>
@@ -233,7 +233,7 @@ const AccountManagement = ({
                     </Button>
                   </div>
                 </div>
-              </Card>
+              </Card> */}
 
               {/* 微信绑定 */}
               <Card className='!rounded-xl'>
@@ -277,7 +277,7 @@ const AccountManagement = ({
               </Card>
 
               {/* GitHub绑定 */}
-              <Card className='!rounded-xl'>
+              {/* <Card className='!rounded-xl'>
                 <div className='flex items-center justify-between gap-3'>
                   <div className='flex items-center flex-1 min-w-0'>
                     <div className='w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center mr-3 flex-shrink-0'>
@@ -315,10 +315,10 @@ const AccountManagement = ({
                     </Button>
                   </div>
                 </div>
-              </Card>
+              </Card> */}
 
               {/* Discord绑定 */}
-              <Card className='!rounded-xl'>
+              {/* <Card className='!rounded-xl'>
                 <div className='flex items-center justify-between gap-3'>
                   <div className='flex items-center flex-1 min-w-0'>
                     <div className='w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center mr-3 flex-shrink-0'>
@@ -356,10 +356,10 @@ const AccountManagement = ({
                     </Button>
                   </div>
                 </div>
-              </Card>
+              </Card> */}
 
               {/* OIDC绑定 */}
-              <Card className='!rounded-xl'>
+              {/* <Card className='!rounded-xl'>
                 <div className='flex items-center justify-between gap-3'>
                   <div className='flex items-center flex-1 min-w-0'>
                     <div className='w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center mr-3 flex-shrink-0'>
@@ -399,10 +399,10 @@ const AccountManagement = ({
                     </Button>
                   </div>
                 </div>
-              </Card>
+              </Card> */}
 
               {/* Telegram绑定 */}
-              <Card className='!rounded-xl'>
+              {/* <Card className='!rounded-xl'>
                 <div className='flex items-center justify-between gap-3'>
                   <div className='flex items-center flex-1 min-w-0'>
                     <div className='w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center mr-3 flex-shrink-0'>
@@ -456,8 +456,8 @@ const AccountManagement = ({
                     )}
                   </div>
                 </div>
-              </Card>
-              <Modal
+              </Card> */}
+              {/* <Modal
                 title={t('绑定 Telegram')}
                 visible={showTelegramBindModal}
                 onCancel={() => setShowTelegramBindModal(false)}
@@ -474,10 +474,10 @@ const AccountManagement = ({
                     />
                   </div>
                 </div>
-              </Modal>
+              </Modal> */}
 
               {/* LinuxDO绑定 */}
-              <Card className='!rounded-xl'>
+              {/* <Card className='!rounded-xl'>
                 <div className='flex items-center justify-between gap-3'>
                   <div className='flex items-center flex-1 min-w-0'>
                     <div className='w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center mr-3 flex-shrink-0'>
@@ -515,7 +515,7 @@ const AccountManagement = ({
                     </Button>
                   </div>
                 </div>
-              </Card>
+              </Card> */}
 
               {/* 自定义 OAuth 提供商绑定 */}
               {status.custom_oauth_providers &&

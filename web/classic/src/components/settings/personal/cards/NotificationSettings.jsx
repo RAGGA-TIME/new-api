@@ -421,7 +421,7 @@ const NotificationSettings = ({
               itemKey='notification'
             >
               <div className='py-4'>
-                <Form.RadioGroup
+                {/* <Form.RadioGroup
                   field='warningType'
                   label={t('通知方式')}
                   initValue={notificationSettings.warningType}
@@ -432,7 +432,7 @@ const NotificationSettings = ({
                   <Radio value='webhook'>{t('Webhook通知')}</Radio>
                   <Radio value='bark'>{t('Bark通知')}</Radio>
                   <Radio value='gotify'>{t('Gotify通知')}</Radio>
-                </Form.RadioGroup>
+                </Form.RadioGroup> */}
 
                 <Form.AutoComplete
                   field='warningThreshold'
@@ -487,7 +487,7 @@ const NotificationSettings = ({
                 )}
 
                 {/* 邮件通知设置 */}
-                {notificationSettings.warningType === 'email' && (
+                {/* {notificationSettings.warningType === 'email' && (
                   <Form.Input
                     field='notificationEmail'
                     label={t('通知邮箱')}
@@ -501,7 +501,7 @@ const NotificationSettings = ({
                     )}
                     showClear
                   />
-                )}
+                )} */}
 
                 {/* Webhook通知设置 */}
                 {notificationSettings.warningType === 'webhook' && (
