@@ -110,6 +110,26 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 	}
 
+	enableAliPay := isAliPayTopUpEnabled()
+	if enableAliPay {
+		hasAliPay := false
+		for _, method := range payMethods {
+			if method["type"] == model.PaymentMethodAliPay {
+				hasAliPay = true
+				break
+			}
+		}
+
+		if !hasAliPay {
+			payMethods = append(payMethods, map[string]string{
+				"name":      "支付宝",
+				"type":      model.PaymentMethodAliPay,
+				"color":     "rgba(var(--semi-blue-5), 1)",
+				"min_topup": strconv.Itoa(setting.AliPayMinTopUp),
+			})
+		}
+	}
+
 	data := gin.H{
 		"enable_online_topup":        isEpayTopUpEnabled(),
 		"enable_stripe_topup":        isStripeTopUpEnabled(),
@@ -117,6 +137,7 @@ func GetTopUpInfo(c *gin.Context) {
 		"enable_waffo_topup":         enableWaffo,
 		"enable_waffo_pancake_topup": enableWaffoPancake,
 		"enable_wechat_pay_topup":    enableWeChatPay,
+		"enable_alipay_topup":        enableAliPay,
 		"waffo_pay_methods": func() interface{} {
 			if enableWaffo {
 				return setting.GetWaffoPayMethods()
@@ -131,6 +152,8 @@ func GetTopUpInfo(c *gin.Context) {
 		"waffo_pancake_min_topup": setting.WaffoPancakeMinTopUp,
 		"wechat_pay_min_topup":    setting.WeChatPayMinTopUp,
 		"wechat_pay_unit_price":  setting.WeChatPayUnitPrice,
+		"alipay_min_topup":       setting.AliPayMinTopUp,
+		"alipay_unit_price":     setting.AliPayUnitPrice,
 		"amount_options":     operation_setting.GetPaymentSetting().AmountOptions,
 		"discount":           operation_setting.GetPaymentSetting().AmountDiscount,
 		"top_up_agreement":   common.TopUpAgreement,

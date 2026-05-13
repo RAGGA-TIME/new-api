@@ -199,6 +199,12 @@ export type IntegrationSettings = {
   WaffoPancakeCurrency: string
   WaffoPancakeUnitPrice: number
   WaffoPancakeMinTopUp: number
+  AliPayEnabled: boolean
+  AliPayAppID: string
+  AliPayPrivateKey: string
+  AliPayPublicKey: string
+  AliPayUnitPrice: number
+  AliPayMinTopUp: number
 }
 
 export type ModelSettings = {

@@ -109,3 +109,14 @@ func isWeChatPayTopUpEnabled() bool {
 func isWeChatPayWebhookEnabled() bool {
 	return isWeChatPayTopUpEnabled()
 }
+
+func isAliPayTopUpEnabled() bool {
+	return setting.AliPayEnabled &&
+		strings.TrimSpace(setting.AliPayAppID) != "" &&
+		strings.TrimSpace(setting.AliPayPrivateKey) != "" &&
+		strings.TrimSpace(setting.AliPayPublicKey) != ""
+}
+
+func isAliPayWebhookEnabled() bool {
+	return isAliPayTopUpEnabled()
+}

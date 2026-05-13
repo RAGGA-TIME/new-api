@@ -5,6 +5,7 @@ import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { SectionPageLayout } from '@/components/layout'
 import { AffiliateRewardsCard } from './components/affiliate-rewards-card'
+import { AliPayRedirectDialog } from './components/dialogs/alipay-redirect-dialog'
 import { BillingHistoryDialog } from './components/dialogs/billing-history-dialog'
 import { CreemConfirmDialog } from './components/dialogs/creem-confirm-dialog'
 import { PaymentConfirmDialog } from './components/dialogs/payment-confirm-dialog'
@@ -26,6 +27,7 @@ import {
   getDefaultPaymentType,
   getMinTopupAmount,
   isWaffoPancakePayment,
+  isAliPayDirectPayment,
 } from './lib'
 import type {
   UserWalletData,
@@ -54,6 +56,9 @@ export function Wallet(props: WalletProps) {
   const [creemDialogOpen, setCreemDialogOpen] = useState(false)
   const [selectedCreemProduct, setSelectedCreemProduct] =
     useState<CreemProduct | null>(null)
+  const [alipayDialogOpen, setAliPayDialogOpen] = useState(false)
+  const [alipayPayUrl, setAliPayPayUrl] = useState('')
+  const [alipayTradeNo, setAliPayTradeNo] = useState('')
 
   const { status } = useStatus()
   const { currency } = useSystemConfig()
@@ -167,6 +172,19 @@ export function Wallet(props: WalletProps) {
     if (!selectedPaymentMethod) return
 
     const isPancake = isWaffoPancakePayment(selectedPaymentMethod.type)
+    const isAliPayDirect = isAliPayDirectPayment(selectedPaymentMethod.type)
+
+    if (isAliPayDirect) {
+      const result = await processPayment(topupAmount, selectedPaymentMethod.type)
+      if (result && typeof result === 'object' && 'payUrl' in result) {
+        setConfirmDialogOpen(false)
+        setAliPayPayUrl(result.payUrl)
+        setAliPayTradeNo(result.tradeNo)
+        setAliPayDialogOpen(true)
+      }
+      return
+    }
+
     const success = isPancake
       ? await processWaffoPancakePayment(topupAmount)
       : await processPayment(topupAmount, selectedPaymentMethod.type)
@@ -176,6 +194,11 @@ export function Wallet(props: WalletProps) {
       await fetchUser()
     }
   }
+
+  // Handle AliPay payment success
+  const handleAliPaySuccess = useCallback(async () => {
+    await fetchUser()
+  }, [fetchUser])
 
   // Handle redemption
   const handleRedeem = async () => {
@@ -324,6 +347,15 @@ export function Wallet(props: WalletProps) {
         onConfirm={handleCreemConfirm}
         product={selectedCreemProduct}
         processing={creemProcessing}
+      />
+
+      <AliPayRedirectDialog
+        open={alipayDialogOpen}
+        onOpenChange={setAliPayDialogOpen}
+        payUrl={alipayPayUrl}
+        tradeNo={alipayTradeNo}
+        paymentAmount={paymentAmount}
+        onSuccess={handleAliPaySuccess}
       />
     </>
   )

@@ -109,6 +109,20 @@ export function getPaymentIcon(
           style={{ color: PAYMENT_ICON_COLORS[PAYMENT_TYPES.WAFFO_PANCAKE] }}
         />
       )
+    case PAYMENT_TYPES.WECHAT_PAY:
+      return (
+        <SiWechat
+          className={className}
+          style={{ color: PAYMENT_ICON_COLORS[PAYMENT_TYPES.WECHAT_PAY] }}
+        />
+      )
+    case PAYMENT_TYPES.ALIPAY_DIRECT:
+      return (
+        <SiAlipay
+          className={className}
+          style={{ color: PAYMENT_ICON_COLORS[PAYMENT_TYPES.ALIPAY_DIRECT] }}
+        />
+      )
     default:
       return <CreditCard className={className} />
   }
