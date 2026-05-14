@@ -410,6 +410,111 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 	RecordTopupLog(userId, fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), payMoney), callerIp, paymentMethod, "admin")
 	return nil
 }
+// RefundTopUp 用户主动退款：将已完成的充值订单标记为已退款，并扣除对应额度
+// 如果用户余额不足则拒绝退款
+func RefundTopUp(tradeNo string, userId int, callerIp string) error {
+	if tradeNo == "" {
+		return errors.New("未提供订单号")
+	}
+
+	refCol := "`trade_no`"
+	if common.UsingPostgreSQL {
+		refCol = `"trade_no"`
+	}
+
+	var quotaToDeduct int
+	var paymentMethod string
+
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		topUp := &TopUp{}
+		// 行级锁，避免并发退款
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
+			return errors.New("充值订单不存在")
+		}
+
+		// 校验订单归属：只能退自己的订单
+		if topUp.UserId != userId {
+			return errors.New("无权操作此订单")
+		}
+
+		// 幂等处理：已退款直接返回
+		if topUp.Status == common.TopUpStatusRefunded {
+			return nil
+		}
+
+		if topUp.Status != common.TopUpStatusSuccess {
+			return errors.New("订单状态不是已支付，无法退款")
+		}
+
+		// 计算应扣除额度（与 ManualCompleteTopUp 保持一致的额度计算逻辑）
+		if topUp.PaymentProvider == PaymentProviderStripe {
+			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+			quotaToDeduct = int(decimal.NewFromFloat(topUp.Money).Mul(dQuotaPerUnit).IntPart())
+		} else if topUp.PaymentMethod == PaymentMethodWeChatPay {
+			dAmountCNY := decimal.NewFromInt(topUp.Amount)
+			dUnitPrice := decimal.NewFromFloat(setting.WeChatPayUnitPrice)
+			if dUnitPrice.IsZero() {
+				return errors.New("微信支付单价未配置")
+			}
+			dAmountUSD := dAmountCNY.Div(dUnitPrice)
+			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+			quotaToDeduct = int(dAmountUSD.Mul(dQuotaPerUnit).IntPart())
+		} else if topUp.PaymentMethod == PaymentMethodAliPay {
+			dAmountCNY := decimal.NewFromInt(topUp.Amount)
+			dUnitPrice := decimal.NewFromFloat(setting.AliPayUnitPrice)
+			if dUnitPrice.IsZero() {
+				return errors.New("支付宝单价未配置")
+			}
+			dAmountUSD := dAmountCNY.Div(dUnitPrice)
+			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+			quotaToDeduct = int(dAmountUSD.Mul(dQuotaPerUnit).IntPart())
+		} else if topUp.PaymentProvider == PaymentProviderCreem {
+			// Creem 直接使用 Amount 作为额度
+			quotaToDeduct = int(topUp.Amount)
+		} else {
+			dAmount := decimal.NewFromInt(topUp.Amount)
+			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+			quotaToDeduct = int(dAmount.Mul(dQuotaPerUnit).IntPart())
+		}
+
+		if quotaToDeduct <= 0 {
+			return errors.New("无效的退款额度")
+		}
+
+		// 检查用户余额是否足够扣除
+		var user User
+		if err := tx.Where("id = ?", topUp.UserId).First(&user).Error; err != nil {
+			return errors.New("用户不存在")
+		}
+		if user.Quota < quotaToDeduct {
+			return fmt.Errorf("余额不足，无法退款。当前余额: %s，需扣除: %s", logger.FormatQuota(user.Quota), logger.FormatQuota(quotaToDeduct))
+		}
+
+		// 扣除用户额度
+		if err := tx.Model(&User{}).Where("id = ?", topUp.UserId).Update("quota", gorm.Expr("quota - ?", quotaToDeduct)).Error; err != nil {
+			return err
+		}
+
+		// 更新订单状态为已退款
+		topUp.Status = common.TopUpStatusRefunded
+		if err := tx.Save(topUp).Error; err != nil {
+			return err
+		}
+
+		paymentMethod = topUp.PaymentMethod
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+
+	// 事务外记录退款日志
+	RecordTopupLog(userId, fmt.Sprintf("充值订单退款成功，退款额度: %v，订单号: %s", logger.FormatQuota(quotaToDeduct), tradeNo), callerIp, paymentMethod, "refund")
+
+	return nil
+}
+
 func RechargeCreem(referenceId string, customerEmail string, customerName string, callerIp string) (err error) {
 	if referenceId == "" {
 		return errors.New("未提供支付单号")

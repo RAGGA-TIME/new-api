@@ -219,6 +219,16 @@ export async function completeOrder(
 }
 
 /**
+ * Refund a completed order
+ */
+export async function refundOrder(
+  request: CompleteOrderRequest
+): Promise<ApiResponse> {
+  const res = await api.post('/api/user/topup/refund', request)
+  return res.data
+}
+
+/**
  * Request AliPay direct payment
  */
 export async function requestAliPayPayment(

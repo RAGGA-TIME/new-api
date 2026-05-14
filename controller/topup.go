@@ -547,3 +547,28 @@ func AdminCompleteTopUp(c *gin.Context) {
 	}
 	common.ApiSuccess(c, nil)
 }
+
+type UserRefundTopupRequest struct {
+	TradeNo string `json:"trade_no"`
+}
+
+// UserRefundTopUp 用户退款接口
+func UserRefundTopUp(c *gin.Context) {
+	var req UserRefundTopupRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.TradeNo == "" {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+
+	userId := c.GetInt("id")
+
+	// 订单级互斥，防止并发退款
+	LockOrder(req.TradeNo)
+	defer UnlockOrder(req.TradeNo)
+
+	if err := model.RefundTopUp(req.TradeNo, userId, c.ClientIP()); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
