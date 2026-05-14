@@ -113,16 +113,14 @@ func RequestWeChatPayPay(c *gin.Context) {
 		return
 	}
 
-	// if req.Amount < int64(setting.WeChatPayMinTopUp) {
-	// 	c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值金额不能小于 %d 元", setting.WeChatPayMinTopUp)})
-	// 	return
-	// }
+	if req.Amount < int64(setting.WeChatPayMinTopUp) {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值金额不能小于 %d 元", setting.WeChatPayMinTopUp)})
+		return
+	}
 
 	id := c.GetInt("id")
 
-	//	@TODO：这里先写死0.02测试
-	// payMoneyCents := req.Amount * 100 // CNY yuan -> cents
-	payMoneyCents := req.Amount * 1 * 2 // CNY yuan -> cents
+	payMoneyCents := req.Amount * 100 // CNY yuan -> cents
 	if payMoneyCents <= 0 {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额无效"})
 		return
