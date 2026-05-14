@@ -320,7 +320,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
       onCancel={onCancel}
       footer={null}
       size={isMobile ? 'full-width' : 'large'}
-      style={isMobile ? undefined : { maxWidth: '960px' }}
+      style={isMobile ? undefined : { maxWidth: '1100px' }}
     >
       <div className='mb-3'>
         <Input
