@@ -24,6 +24,7 @@ import PricingQuotaTypes from '../filter/PricingQuotaTypes';
 import PricingEndpointTypes from '../filter/PricingEndpointTypes';
 import PricingVendors from '../filter/PricingVendors';
 import PricingTags from '../filter/PricingTags';
+import PricingHotRecommend from '../filter/PricingHotRecommend';
 
 import { resetPricingFilters } from '../../../../helpers/utils';
 import { usePricingFilterCounts } from '../../../../hooks/model-pricing/usePricingFilterCounts';
@@ -103,6 +104,15 @@ const PricingSidebar = ({
           {t('重置')}
         </Button>
       </div>
+
+      {/* 热门推荐 */}
+      <PricingHotRecommend
+        models={categoryProps.models}
+        filterVendor={filterVendor}
+        setFilterVendor={setFilterVendor}
+        loading={loading}
+        t={t}
+      />
 
       <PricingVendors
         filterVendor={filterVendor}
