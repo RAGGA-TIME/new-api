@@ -126,9 +126,6 @@ func RequestWeChatPayPay(c *gin.Context) {
 		return
 	}
 
-	//@TODO: 测试环境使用
-	payMoneyCents = 1 * 2 // CNY yuan -> cents
-
 	tradeNo := fmt.Sprintf("WXP%dNO%s%d", id, common.GetRandomString(6), time.Now().Unix())
 
 	callBackAddress := service.GetCallbackAddress()

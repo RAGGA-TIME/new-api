@@ -113,8 +113,8 @@ func refundWeChatPay(tradeNo string, refundAmountCents int64, totalAmountCents i
 		OutRefundNo: core.String(outRefundNo),
 		Reason:      core.String("用户申请退款"),
 		Amount: &refunddomestic.AmountReq{
-			Refund:   core.Int64(2),
-			Total:    core.Int64(2),
+			Refund:   core.Int64(refundAmountCents),
+			Total:    core.Int64(refundAmountCents),
 			Currency: core.String("CNY"),
 		},
 	})
