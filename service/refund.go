@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -11,6 +12,9 @@ import (
 
 	"github.com/shopspring/decimal"
 	"github.com/smartwalle/alipay/v3"
+	"github.com/stripe/stripe-go/v81"
+	"github.com/stripe/stripe-go/v81/checkout/session"
+	stripeRefund "github.com/stripe/stripe-go/v81/refund"
 	"github.com/wechatpay-apiv3/wechatpay-go/core"
 	"github.com/wechatpay-apiv3/wechatpay-go/core/option"
 	"github.com/wechatpay-apiv3/wechatpay-go/services/refunddomestic"
@@ -161,6 +165,69 @@ func refundAliPay(tradeNo string, refundAmount string) (*PaymentRefundResult, er
 	return &PaymentRefundResult{
 		Success:  true,
 		RefundID: resp.TradeNo,
+	}, nil
+}
+
+// refundStripe 调用Stripe退款API
+// Stripe 退款需要通过 PaymentIntent ID，因此需要先通过 Checkout Session 获取
+func refundStripe(tradeNo string) (*PaymentRefundResult, error) {
+	if !strings.HasPrefix(setting.StripeApiSecret, "sk_") && !strings.HasPrefix(setting.StripeApiSecret, "rk_") {
+		return nil, fmt.Errorf("无效的Stripe API密钥")
+	}
+
+	stripe.Key = setting.StripeApiSecret
+
+	// 通过 client_reference_id 查找 checkout session
+	params := &stripe.CheckoutSessionListParams{}
+	params.Limit = stripe.Int64(100)
+	iter := session.List(params)
+	var targetSession *stripe.CheckoutSession
+
+	for iter.Next() {
+		s := iter.CheckoutSession()
+		if s.ClientReferenceID == tradeNo {
+			targetSession = s
+			break
+		}
+	}
+	if iter.Err() != nil {
+		return &PaymentRefundResult{
+			Success: false,
+			Error:   fmt.Sprintf("Stripe 查找Checkout Session失败: %s", iter.Err().Error()),
+		}, nil
+	}
+
+	if targetSession == nil {
+		return &PaymentRefundResult{
+			Success: false,
+			Error:   "Stripe 未找到对应的Checkout Session，无法退款",
+		}, nil
+	}
+
+	if targetSession.PaymentIntent == nil {
+		return &PaymentRefundResult{
+			Success: false,
+			Error:   "Stripe Checkout Session无关联的PaymentIntent，无法退款",
+		}, nil
+	}
+
+	// 通过 PaymentIntent 发起退款
+	refundParams := &stripe.RefundParams{
+		PaymentIntent: stripe.String(targetSession.PaymentIntent.ID),
+		Reason:        stripe.String(string(stripe.RefundReasonRequestedByCustomer)),
+	}
+
+	r, err := stripeRefund.New(refundParams)
+	if err != nil {
+		return &PaymentRefundResult{
+			Success: false,
+			Error:   fmt.Sprintf("Stripe 退款失败: %s", err.Error()),
+		}, nil
+	}
+
+	return &PaymentRefundResult{
+		Success:  true,
+		RefundID: r.ID,
 	}, nil
 }
 
