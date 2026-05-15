@@ -39,6 +39,7 @@ import InvitationCard from './InvitationCard';
 import TransferModal from './modals/TransferModal';
 import TopupHistoryModal from './modals/TopupHistoryModal';
 import WeChatPayQRCodeModal from './modals/WeChatPayQRCodeModal';
+import AliPayRedirectModal from './modals/AliPayRedirectModal';
 
 const TopUp = () => {
   const { t } = useTranslation();
@@ -89,6 +90,12 @@ const TopUp = () => {
   const [wechatPayCodeUrl, setWechatPayCodeUrl] = useState('');
   const [wechatPayTradeNo, setWechatPayTradeNo] = useState('');
   const [wechatPayAmount, setWechatPayAmount] = useState(0);
+
+  // 支付宝支付相关状态
+  const [alipayRedirectVisible, setAlipayRedirectVisible] = useState(false);
+  const [alipayPayUrl, setAlipayPayUrl] = useState('');
+  const [alipayTradeNo, setAlipayTradeNo] = useState('');
+  const [alipayPayAmount, setAlipayPayAmount] = useState(0);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [payWay, setPayWay] = useState('');
@@ -346,7 +353,7 @@ const TopUp = () => {
       return;
     }
 
-    // Process alipay_direct: redirect to Alipay page
+    // Process alipay_direct: redirect to Alipay page with confirmation dialog
     if (payWay === 'alipay_direct') {
       setPaymentLoading(true);
       try {
@@ -357,8 +364,10 @@ const TopUp = () => {
         if (res !== undefined) {
           const { message, data } = res.data;
           if (message === 'success' && data.pay_url) {
-            window.open(data.pay_url, '_blank');
-            showSuccess(t('正在跳转支付宝...'));
+            setAlipayPayUrl(data.pay_url);
+            setAlipayTradeNo(data.trade_no);
+            setAlipayPayAmount(topUpCount);
+            setAlipayRedirectVisible(true);
           } else {
             const errorMsg =
               typeof data === 'string' ? data : message || t('支付失败');
@@ -1025,6 +1034,16 @@ const TopUp = () => {
         codeUrl={wechatPayCodeUrl}
         tradeNo={wechatPayTradeNo}
         amount={wechatPayAmount}
+        onSuccess={getUserQuota}
+      />
+
+      {/* 支付宝支付跳转确认模态框 */}
+      <AliPayRedirectModal
+        visible={alipayRedirectVisible}
+        onCancel={() => setAlipayRedirectVisible(false)}
+        payUrl={alipayPayUrl}
+        tradeNo={alipayTradeNo}
+        amount={alipayPayAmount}
         onSuccess={getUserQuota}
       />
 

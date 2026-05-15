@@ -107,6 +107,7 @@ func refundWeChatPay(tradeNo string, refundAmountCents int64, totalAmountCents i
 
 	outRefundNo := fmt.Sprintf("RF%d%s", time.Now().Unix(), tradeNo[:min(8, len(tradeNo))])
 
+	//@TODO: 测试使用
 	resp, _, err := svc.Create(context.Background(), refunddomestic.CreateRequest{
 		OutTradeNo:  core.String(tradeNo),
 		OutRefundNo: core.String(outRefundNo),

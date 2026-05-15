@@ -72,6 +72,14 @@ export function AliPayRedirectDialog({
     return () => clearInterval(interval)
   }, [open, paymentSuccess, tradeNo, checkPaymentStatus])
 
+  // Handle "Check Later" — also verify payment status before closing
+  const handleCheckLater = useCallback(async () => {
+    await checkPaymentStatus()
+    if (!paymentSuccess) {
+      onOpenChange(false)
+    }
+  }, [checkPaymentStatus, paymentSuccess, onOpenChange])
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='max-w-md'>
@@ -128,28 +136,35 @@ export function AliPayRedirectDialog({
                   <ExternalLink className='mr-2 h-4 w-4' />
                   {t('Open Alipay Page')}
                 </Button>
-
-                <Button
-                  variant='ghost'
-                  onClick={checkPaymentStatus}
-                  disabled={checking}
-                  className='w-full'
-                >
-                  {checking && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
-                  {t('Check Payment Status')}
-                </Button>
               </div>
             </>
           )}
         </div>
 
         <DialogFooter>
-          <Button
-            onClick={() => onOpenChange(false)}
-            variant={paymentSuccess ? 'default' : 'outline'}
-          >
-            {paymentSuccess ? t('Done') : t('Close')}
-          </Button>
+          {!paymentSuccess && (
+            <>
+              <Button
+                onClick={checkPaymentStatus}
+                disabled={checking}
+              >
+                {checking && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
+                {t('Payment Completed')}
+              </Button>
+              <Button
+                variant='ghost'
+                onClick={handleCheckLater}
+                disabled={checking}
+              >
+                {t('Check Later')}
+              </Button>
+            </>
+          )}
+          {paymentSuccess && (
+            <Button onClick={() => onOpenChange(false)}>
+              {t('Done')}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
