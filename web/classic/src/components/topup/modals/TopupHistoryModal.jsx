@@ -37,6 +37,8 @@ import { IconSearch } from '@douyinfe/semi-icons';
 import { API, timestamp2string } from '../../../helpers';
 import { isAdmin } from '../../../helpers/utils';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
+import { PAYMENT_METHOD_NAMES } from '../../../../../default/src/features/wallet/lib/billing';
+
 const { Text } = Typography;
 
 // 状态映射配置
@@ -46,15 +48,6 @@ const STATUS_CONFIG = {
   failed: { type: 'danger', key: '失败' },
   expired: { type: 'danger', key: '已过期' },
   refunded: { type: 'default', key: '已退款' },
-};
-
-// 支付方式映射
-const PAYMENT_METHOD_MAP = {
-  stripe: 'Stripe',
-  creem: 'Creem',
-  waffo: 'Waffo',
-  alipay: '支付宝',
-  wxpay: '微信',
 };
 
 const TopupHistoryModal = ({ visible, onCancel, t }) => {
@@ -174,7 +167,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
 
   // 渲染支付方式
   const renderPaymentMethod = (pm) => {
-    const displayName = PAYMENT_METHOD_MAP[pm];
+    const displayName = PAYMENT_METHOD_NAMES[pm];
     return <Text>{displayName ? t(displayName) : pm || '-'}</Text>;
   };
 
@@ -320,7 +313,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
       onCancel={onCancel}
       footer={null}
       size={isMobile ? 'full-width' : 'large'}
-      style={isMobile ? undefined : { maxWidth: '1100px' }}
+      style={isMobile ? undefined : { minWidth: '1100px' }}
     >
       <div className='mb-3'>
         <Input
