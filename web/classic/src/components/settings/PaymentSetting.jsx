@@ -26,6 +26,7 @@ import SettingsPaymentGatewayCreem from '../../pages/Setting/Payment/SettingsPay
 import SettingsPaymentGatewayWaffo from '../../pages/Setting/Payment/SettingsPaymentGatewayWaffo';
 import SettingsPaymentGatewayWaffoPancake from '../../pages/Setting/Payment/SettingsPaymentGatewayWaffoPancake';
 import SettingsPaymentGatewayWeChatPay from '../../pages/Setting/Payment/SettingsPaymentGatewayWeChatPay';
+import SettingsPaymentGatewayAliPay from '../../pages/Setting/Payment/SettingsPaymentGatewayAliPay';
 import { API, showError, toBoolean } from '../../helpers';
 import { useTranslation } from 'react-i18next';
 
@@ -68,6 +69,11 @@ const PaymentSetting = () => {
     WeChatPaySerialNo: '',
     WeChatPayUnitPrice: 1.0,
     WeChatPayMinTopUp: 1,
+
+    AliPayEnabled: false,
+    AliPayAppID: '',
+    AliPayUnitPrice: 1.0,
+    AliPayMinTopUp: 1,
   });
 
   let [loading, setLoading] = useState(false);
@@ -120,6 +126,8 @@ const PaymentSetting = () => {
           case 'WaffoPancakeMinTopUp':
           case 'WeChatPayUnitPrice':
           case 'WeChatPayMinTopUp':
+          case 'AliPayUnitPrice':
+          case 'AliPayMinTopUp':
             newInputs[item.key] = parseFloat(item.value);
             break;
           case 'WaffoPancakeMerchantID':
@@ -131,6 +139,7 @@ const PaymentSetting = () => {
           case 'WeChatPayAppID':
           case 'WeChatPayMchID':
           case 'WeChatPaySerialNo':
+          case 'AliPayAppID':
             newInputs[item.key] = item.value;
             break;
           case 'WaffoPancakeSandbox':
@@ -213,6 +222,13 @@ const PaymentSetting = () => {
             </Tabs.TabPane>
             <Tabs.TabPane tab={t('微信支付设置')} itemKey='wechat-pay'>
               <SettingsPaymentGatewayWeChatPay
+                options={inputs}
+                refresh={onRefresh}
+                hideSectionTitle
+              />
+            </Tabs.TabPane>
+            <Tabs.TabPane tab={t('支付宝设置')} itemKey='alipay'>
+              <SettingsPaymentGatewayAliPay
                 options={inputs}
                 refresh={onRefresh}
                 hideSectionTitle

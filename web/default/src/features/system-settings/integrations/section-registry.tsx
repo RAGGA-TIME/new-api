@@ -66,6 +66,14 @@ const INTEGRATIONS_SECTIONS = [
           WaffoPancakeUnitPrice: settings.WaffoPancakeUnitPrice ?? 1,
           WaffoPancakeMinTopUp: settings.WaffoPancakeMinTopUp ?? 1,
         }}
+        alipayDefaultValues={{
+          AliPayEnabled: settings.AliPayEnabled ?? false,
+          AliPayAppID: settings.AliPayAppID ?? '',
+          AliPayPrivateKey: settings.AliPayPrivateKey ?? '',
+          AliPayPublicKey: settings.AliPayPublicKey ?? '',
+          AliPayUnitPrice: settings.AliPayUnitPrice ?? 1,
+          AliPayMinTopUp: settings.AliPayMinTopUp ?? 1,
+        }}
       />
     ),
   },

@@ -6,6 +6,7 @@ import {
   getUserBillingHistory,
   getAllBillingHistory,
   completeOrder,
+  refundOrder,
   isApiSuccess,
 } from '../api'
 import type { TopupRecord } from '../types'
@@ -32,6 +33,7 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
   const [keyword, setKeyword] = useState('')
   const [loading, setLoading] = useState(false)
   const [completing, setCompleting] = useState(false)
+  const [refunding, setRefunding] = useState(false)
 
   /**
    * Fetch billing history
@@ -99,6 +101,34 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
   )
 
   /**
+   * Refund a completed order
+   */
+  const handleRefundOrder = useCallback(
+    async (tradeNo: string) => {
+      setRefunding(true)
+      try {
+        const response = await refundOrder({ trade_no: tradeNo })
+        if (isApiSuccess(response)) {
+          toast.success(i18next.t('Refund successful'))
+          await fetchBillingHistory()
+          return true
+        } else {
+          toast.error(response.message || i18next.t('Refund failed'))
+          return false
+        }
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to refund order:', error)
+        toast.error(i18next.t('Refund failed'))
+        return false
+      } finally {
+        setRefunding(false)
+      }
+    },
+    [fetchBillingHistory]
+  )
+
+  /**
    * Change page
    */
   const handlePageChange = useCallback((newPage: number) => {
@@ -134,11 +164,13 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
     keyword,
     loading,
     completing,
+    refunding,
     isAdmin,
     handlePageChange,
     handlePageSizeChange,
     handleSearch,
     handleCompleteOrder,
+    handleRefundOrder,
     refresh: fetchBillingHistory,
   }
 }

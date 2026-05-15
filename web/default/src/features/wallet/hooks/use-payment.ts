@@ -5,13 +5,16 @@ import {
   calculateAmount,
   calculateStripeAmount,
   calculateWaffoPancakeAmount,
+  calculateAliPayAmount,
   requestPayment,
   requestStripePayment,
+  requestAliPayPayment,
   isApiSuccess,
 } from '../api'
 import {
   isStripePayment,
   isWaffoPancakePayment,
+  isAliPayDirectPayment,
   submitPaymentForm,
 } from '../lib'
 
@@ -32,11 +35,14 @@ export function usePayment() {
 
         const isStripe = isStripePayment(paymentType)
         const isPancake = isWaffoPancakePayment(paymentType)
+        const isAliPayDirect = isAliPayDirectPayment(paymentType)
         const response = isStripe
           ? await calculateStripeAmount({ amount: topupAmount })
           : isPancake
             ? await calculateWaffoPancakeAmount({ amount: topupAmount })
-            : await calculateAmount({ amount: topupAmount })
+            : isAliPayDirect
+              ? await calculateAliPayAmount({ amount: topupAmount })
+              : await calculateAmount({ amount: topupAmount })
 
         if (isApiSuccess(response) && response.data) {
           const calculatedAmount = parseFloat(response.data)
@@ -64,7 +70,22 @@ export function usePayment() {
         setProcessing(true)
 
         const isStripe = isStripePayment(paymentType)
+        const isAliPayDirect = isAliPayDirectPayment(paymentType)
         const amount = Math.floor(topupAmount)
+
+        // Handle AliPay direct payment (page redirect)
+        if (isAliPayDirect) {
+          const response = await requestAliPayPayment({ amount })
+          if (!isApiSuccess(response)) {
+            toast.error(response.message || i18next.t('Payment request failed'))
+            return null
+          }
+          if (response.data?.pay_url) {
+            return { payUrl: response.data.pay_url, tradeNo: response.data.trade_no }
+          }
+          toast.error(i18next.t('Payment request failed'))
+          return null
+        }
 
         const response = isStripe
           ? await requestStripePayment({

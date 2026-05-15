@@ -31,13 +31,17 @@ import {
   removeTrailingSlash,
 } from './utils'
 import {
+  WaffoSettingsSection,
+  type WaffoSettingsValues,
+} from './waffo-settings-section'
+import {
   WaffoPancakeSettingsSection,
   type WaffoPancakeSettingsValues,
 } from './waffo-pancake-settings-section'
 import {
-  WaffoSettingsSection,
-  type WaffoSettingsValues,
-} from './waffo-settings-section'
+  AliPaySettingsSection,
+  type AliPaySettingsValues,
+} from './alipay-settings-section'
 
 const paymentSchema = z.object({
   PayAddress: z.string().refine((value) => {
@@ -111,12 +115,14 @@ type PaymentSettingsSectionProps = {
   defaultValues: PaymentFormValues
   waffoDefaultValues: WaffoSettingsValues
   waffoPancakeDefaultValues: WaffoPancakeSettingsValues
+  alipayDefaultValues: AliPaySettingsValues
 }
 
 export function PaymentSettingsSection({
   defaultValues,
   waffoDefaultValues,
   waffoPancakeDefaultValues,
+  alipayDefaultValues,
 }: PaymentSettingsSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
@@ -1291,6 +1297,10 @@ export function PaymentSettingsSection({
       <Separator />
 
       <WaffoPancakeSettingsSection defaultValues={waffoPancakeDefaultValues} />
+
+      <Separator />
+
+      <AliPaySettingsSection defaultValues={alipayDefaultValues} />
       {/* eslint-enable react-hooks/refs */}
     </SettingsSection>
   )

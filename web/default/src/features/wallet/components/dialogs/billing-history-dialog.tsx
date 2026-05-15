@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Search, Copy, Check, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Search, Copy, Check, ChevronLeft, ChevronRight, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatCurrencyFromUSD } from '@/lib/currency'
 import { formatNumber } from '@/lib/format'
@@ -59,14 +59,17 @@ export function BillingHistoryDialog({
     keyword,
     loading,
     completing,
+    refunding,
     isAdmin,
     handlePageChange,
     handlePageSizeChange,
     handleSearch,
     handleCompleteOrder,
+    handleRefundOrder,
   } = useBillingHistory()
 
   const [confirmTradeNo, setConfirmTradeNo] = useState<string | null>(null)
+  const [confirmRefundTradeNo, setConfirmRefundTradeNo] = useState<string | null>(null)
   const { copyToClipboard, copiedText } = useCopyToClipboard({ notify: false })
 
   const totalPages = Math.ceil(total / pageSize)
@@ -80,10 +83,19 @@ export function BillingHistoryDialog({
     }
   }
 
+  const handleConfirmRefund = async () => {
+    if (confirmRefundTradeNo) {
+      const success = await handleRefundOrder(confirmRefundTradeNo)
+      if (success) {
+        setConfirmRefundTradeNo(null)
+      }
+    }
+  }
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className='max-w-4xl'>
+        <DialogContent className='max-w-5xl'>
           <DialogHeader>
             <DialogTitle>{t('Billing History')}</DialogTitle>
             <DialogDescription>
@@ -245,6 +257,22 @@ export function BillingHistoryDialog({
                             </Button>
                           </div>
                         )}
+
+                        {/* Refund Action */}
+                        {record.status === 'success' && (
+                          <div className='mt-4 flex justify-end'>
+                            <Button
+                              size='sm'
+                              variant='outline'
+                              className='text-destructive hover:text-destructive'
+                              onClick={() => setConfirmRefundTradeNo(record.trade_no)}
+                              disabled={refunding}
+                            >
+                              <RotateCcw className='mr-1 h-3 w-3' />
+                              {t('Refund')}
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     )
                   })}
@@ -313,6 +341,35 @@ export function BillingHistoryDialog({
               disabled={completing}
             >
               {completing ? 'Processing...' : 'Confirm'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirm Refund Dialog */}
+      <AlertDialog
+        open={!!confirmRefundTradeNo}
+        onOpenChange={(open) => !open && setConfirmRefundTradeNo(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('Confirm Refund')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t(
+                'Are you sure you want to refund this order? The corresponding quota will be deducted from your balance. If your balance is insufficient, the refund will fail.'
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={refunding}>
+              {t('Cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmRefund}
+              disabled={refunding}
+              className='bg-destructive text-white hover:bg-destructive/90'
+            >
+              {refunding ? 'Processing...' : t('Refund')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

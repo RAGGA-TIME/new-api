@@ -39,6 +39,7 @@ import InvitationCard from './InvitationCard';
 import TransferModal from './modals/TransferModal';
 import TopupHistoryModal from './modals/TopupHistoryModal';
 import WeChatPayQRCodeModal from './modals/WeChatPayQRCodeModal';
+import AliPayRedirectModal from './modals/AliPayRedirectModal';
 
 const TopUp = () => {
   const { t } = useTranslation();
@@ -64,6 +65,9 @@ const TopUp = () => {
   const [enableStripeTopUp, setEnableStripeTopUp] = useState(
     statusState?.status?.enable_stripe_topup || false,
   );
+  const [enableAliPayTopUp, setEnableAliPayTopUp] = useState(false);
+  const [alipayMinTopUp, setAliPayMinTopUp] = useState(1);
+  const [alipayUnitPrice, setAliPayUnitPrice] = useState(1);
   const [statusLoading, setStatusLoading] = useState(true);
 
   // Creem 相关状态
@@ -86,6 +90,12 @@ const TopUp = () => {
   const [wechatPayCodeUrl, setWechatPayCodeUrl] = useState('');
   const [wechatPayTradeNo, setWechatPayTradeNo] = useState('');
   const [wechatPayAmount, setWechatPayAmount] = useState(0);
+
+  // 支付宝支付相关状态
+  const [alipayRedirectVisible, setAlipayRedirectVisible] = useState(false);
+  const [alipayPayUrl, setAlipayPayUrl] = useState('');
+  const [alipayTradeNo, setAlipayTradeNo] = useState('');
+  const [alipayPayAmount, setAlipayPayAmount] = useState(0);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [payWay, setPayWay] = useState('');
@@ -183,7 +193,33 @@ const TopUp = () => {
     if (payment === 'wechat_pay') {
       return getWeChatPayAmount(value);
     }
+    if (payment === 'alipay_direct') {
+      return getAliPayAmount(value);
+    }
     return getAmount(value);
+  };
+
+  const getAliPayAmount = async (value) => {
+    if (value === undefined) {
+      value = topUpCount;
+    }
+    setAmountLoading(true);
+    try {
+      const res = await API.post('/api/user/alipay/amount', {
+        amount: parseInt(value),
+      });
+      if (res !== undefined) {
+        const { message, data } = res.data;
+        if (message === 'success') {
+          setAmount(parseFloat(data));
+        } else {
+          showError(data);
+        }
+      }
+    } catch (error) {
+      // ignore
+    }
+    setAmountLoading(false);
   };
 
   const topUp = async () => {
@@ -251,6 +287,15 @@ const TopUp = () => {
         showError(t('充值金额不能小于') + wechatPayMinTopUp + t('元'));
         return;
       }
+    } else if (payWay === 'alipay_direct') {
+      if (!enableAliPayTopUp) {
+        showError(t('管理员未开启支付宝充值！'));
+        return;
+      }
+      if (topUpCount < alipayMinTopUp) {
+        showError(t('充值金额不能小于') + alipayMinTopUp + t('元'));
+        return;
+      }
     } else if (payWay === 'stripe') {
       if (!enableStripeTopUp) {
         showError(t('管理员未开启Stripe充值！'));
@@ -294,6 +339,35 @@ const TopUp = () => {
             setWechatPayTradeNo(data.trade_no);
             setWechatPayAmount(topUpCount);
             setWechatPayQrCodeVisible(true);
+          } else {
+            const errorMsg =
+              typeof data === 'string' ? data : message || t('支付失败');
+            showError(errorMsg);
+          }
+        }
+      } catch (err) {
+        showError(t('支付请求失败'));
+      } finally {
+        setPaymentLoading(false);
+      }
+      return;
+    }
+
+    // Process alipay_direct: redirect to Alipay page with confirmation dialog
+    if (payWay === 'alipay_direct') {
+      setPaymentLoading(true);
+      try {
+        await getAliPayAmount();
+        const res = await API.post('/api/user/alipay/pay', {
+          amount: parseInt(topUpCount),
+        });
+        if (res !== undefined) {
+          const { message, data } = res.data;
+          if (message === 'success' && data.pay_url) {
+            setAlipayPayUrl(data.pay_url);
+            setAlipayTradeNo(data.trade_no);
+            setAlipayPayAmount(topUpCount);
+            setAlipayRedirectVisible(true);
           } else {
             const errorMsg =
               typeof data === 'string' ? data : message || t('支付失败');
@@ -693,6 +767,8 @@ const TopUp = () => {
             data.enable_waffo_pancake_topup || false;
           const enableWeChatPayTopUp =
             data.enable_wechat_pay_topup || false;
+          const enableAliPayDirectTopUp =
+            data.enable_alipay_topup || false;
           const minTopUpValue = enableOnlineTopUp
             ? data.min_topup
             : enableStripeTopUp
@@ -703,6 +779,8 @@ const TopUp = () => {
                   ? data.waffo_pancake_min_topup
                   : enableWeChatPayTopUp
                     ? data.wechat_pay_min_topup
+                    : enableAliPayDirectTopUp
+                      ? data.alipay_min_topup
                 : 1;
           setEnableOnlineTopUp(enableOnlineTopUp);
           setEnableStripeTopUp(enableStripeTopUp);
@@ -714,6 +792,9 @@ const TopUp = () => {
           setWaffoPancakeMinTopUp(data.waffo_pancake_min_topup || 1);
           setEnableWeChatPayTopUp(enableWeChatPayTopUp);
           setWechatPayMinTopUp(data.wechat_pay_min_topup || 1);
+          setEnableAliPayTopUp(data.enable_alipay_topup || false);
+          setAliPayMinTopUp(data.alipay_min_topup || 1);
+          setAliPayUnitPrice(data.alipay_unit_price || 1);
           setMinTopUp(minTopUpValue);
           setTopUpCount(minTopUpValue);
 
@@ -956,6 +1037,16 @@ const TopUp = () => {
         onSuccess={getUserQuota}
       />
 
+      {/* 支付宝支付跳转确认模态框 */}
+      <AliPayRedirectModal
+        visible={alipayRedirectVisible}
+        onCancel={() => setAlipayRedirectVisible(false)}
+        payUrl={alipayPayUrl}
+        tradeNo={alipayTradeNo}
+        amount={alipayPayAmount}
+        onSuccess={getUserQuota}
+      />
+
       {/* 充值账单模态框 */}
       <TopupHistoryModal
         visible={openHistory}
@@ -1003,6 +1094,7 @@ const TopUp = () => {
           enableWaffoTopUp={enableWaffoTopUp}
           enableWaffoPancakeTopUp={enableWaffoPancakeTopUp}
           enableWeChatPayTopUp={enableWeChatPayTopUp}
+          enableAliPayTopUp={enableAliPayTopUp}
           presetAmounts={presetAmounts}
           selectedPreset={selectedPreset}
           selectPresetAmount={selectPresetAmount}
