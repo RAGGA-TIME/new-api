@@ -37,8 +37,14 @@ import { IconSearch } from '@douyinfe/semi-icons';
 import { API, timestamp2string } from '../../../helpers';
 import { isAdmin } from '../../../helpers/utils';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
-import { PAYMENT_METHOD_NAMES } from '../../../../../default/src/features/wallet/lib/billing';
-
+const PAYMENT_METHOD_NAMES = {
+  stripe: 'Stripe',
+  alipay: 'Alipay',
+  wxpay: 'WeChat Pay',
+  wechat_pay: '微信支付',
+  alipay_direct: '支付宝',
+  waffo: 'Waffo',
+}
 const { Text } = Typography;
 
 // 状态映射配置
