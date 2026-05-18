@@ -128,6 +128,12 @@ func InitOptionMap() {
 	common.OptionMap["WeChatPayPublicKey"] = setting.WeChatPayPublicKey
 	common.OptionMap["WeChatPayMinTopUp"] = strconv.Itoa(setting.WeChatPayMinTopUp)
 	common.OptionMap["WeChatPayUnitPrice"] = strconv.FormatFloat(setting.WeChatPayUnitPrice, 'f', -1, 64)
+	common.OptionMap["AliPayEnabled"] = strconv.FormatBool(setting.AliPayEnabled)
+	common.OptionMap["AliPayAppID"] = setting.AliPayAppID
+	common.OptionMap["AliPayPrivateKey"] = setting.AliPayPrivateKey
+	common.OptionMap["AliPayPublicKey"] = setting.AliPayPublicKey
+	common.OptionMap["AliPayMinTopUp"] = strconv.Itoa(setting.AliPayMinTopUp)
+	common.OptionMap["AliPayUnitPrice"] = strconv.FormatFloat(setting.AliPayUnitPrice, 'f', -1, 64)
 	common.OptionMap["TopupGroupRatio"] = common.TopupGroupRatio2JSONString()
 	common.OptionMap["Chats"] = setting.Chats2JsonString()
 	common.OptionMap["AutoGroups"] = setting.AutoGroups2JsonString()
@@ -474,6 +480,18 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.WeChatPayMinTopUp, _ = strconv.Atoi(value)
 	case "WeChatPayUnitPrice":
 		setting.WeChatPayUnitPrice, _ = strconv.ParseFloat(value, 64)
+	case "AliPayEnabled":
+		setting.AliPayEnabled = value == "true"
+	case "AliPayAppID":
+		setting.AliPayAppID = value
+	case "AliPayPrivateKey":
+		setting.AliPayPrivateKey = value
+	case "AliPayPublicKey":
+		setting.AliPayPublicKey = value
+	case "AliPayMinTopUp":
+		setting.AliPayMinTopUp, _ = strconv.Atoi(value)
+	case "AliPayUnitPrice":
+		setting.AliPayUnitPrice, _ = strconv.ParseFloat(value, 64)
 	case "TopupGroupRatio":
 		err = common.UpdateTopupGroupRatioByJSONString(value)
 	case "GitHubClientId":

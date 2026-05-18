@@ -110,6 +110,26 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 	}
 
+	enableAliPay := isAliPayTopUpEnabled()
+	if enableAliPay {
+		hasAliPay := false
+		for _, method := range payMethods {
+			if method["type"] == model.PaymentMethodAliPay {
+				hasAliPay = true
+				break
+			}
+		}
+
+		if !hasAliPay {
+			payMethods = append(payMethods, map[string]string{
+				"name":      "支付宝",
+				"type":      model.PaymentMethodAliPay,
+				"color":     "rgba(var(--semi-blue-5), 1)",
+				"min_topup": strconv.Itoa(setting.AliPayMinTopUp),
+			})
+		}
+	}
+
 	data := gin.H{
 		"enable_online_topup":        isEpayTopUpEnabled(),
 		"enable_stripe_topup":        isStripeTopUpEnabled(),
@@ -117,6 +137,7 @@ func GetTopUpInfo(c *gin.Context) {
 		"enable_waffo_topup":         enableWaffo,
 		"enable_waffo_pancake_topup": enableWaffoPancake,
 		"enable_wechat_pay_topup":    enableWeChatPay,
+		"enable_alipay_topup":        enableAliPay,
 		"waffo_pay_methods": func() interface{} {
 			if enableWaffo {
 				return setting.GetWaffoPayMethods()
@@ -131,6 +152,8 @@ func GetTopUpInfo(c *gin.Context) {
 		"waffo_pancake_min_topup": setting.WaffoPancakeMinTopUp,
 		"wechat_pay_min_topup":    setting.WeChatPayMinTopUp,
 		"wechat_pay_unit_price":  setting.WeChatPayUnitPrice,
+		"alipay_min_topup":       setting.AliPayMinTopUp,
+		"alipay_unit_price":     setting.AliPayUnitPrice,
 		"amount_options":     operation_setting.GetPaymentSetting().AmountOptions,
 		"discount":           operation_setting.GetPaymentSetting().AmountDiscount,
 		"top_up_agreement":   common.TopUpAgreement,
@@ -522,5 +545,69 @@ func AdminCompleteTopUp(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	common.ApiSuccess(c, nil)
+}
+
+type UserRefundTopupRequest struct {
+	TradeNo string `json:"trade_no"`
+}
+
+// UserRefundTopUp 用户退款接口
+func UserRefundTopUp(c *gin.Context) {
+	var req UserRefundTopupRequest
+	if err := c.ShouldBindJSON(&req); err != nil || req.TradeNo == "" {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+
+	userId := c.GetInt("id")
+
+	// 订单级互斥，防止并发退款
+	LockOrder(req.TradeNo)
+	defer UnlockOrder(req.TradeNo)
+
+	// 第一步：校验订单并获取退款信息
+	refundInfo, err := model.ValidateRefundTopUp(req.TradeNo, userId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	// 幂等：已退款
+	if refundInfo.TopUp.Status == common.TopUpStatusRefunded {
+		common.ApiSuccess(c, nil)
+		return
+	}
+
+	// 第二步：调用支付渠道退款API，将钱退回用户账户
+	refundResult, err := service.ProcessPaymentRefund(
+		req.TradeNo,
+		refundInfo.TopUp.PaymentMethod,
+		refundInfo.TopUp.PaymentProvider,
+		refundInfo.TopUp.Amount,
+		refundInfo.TopUp.Money,
+	)
+	if err != nil {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("退款服务异常 trade_no=%s error=%q", req.TradeNo, err.Error()))
+		common.ApiErrorMsg(c, "退款服务异常，请稍后重试")
+		return
+	}
+	if !refundResult.Success {
+		common.ApiErrorMsg(c, refundResult.Error)
+		return
+	}
+
+	// 第三步：支付渠道退款成功，扣除内部额度并更新订单状态
+	if err := model.CompleteRefundTopUp(req.TradeNo, refundInfo.QuotaToDeduct); err != nil {
+		// 支付渠道已退款成功但内部额度扣除失败，记录严重错误
+		logger.LogError(c.Request.Context(), fmt.Sprintf("退款异常：支付渠道已退款但内部额度扣除失败 trade_no=%s refund_id=%s error=%q", req.TradeNo, refundResult.RefundID, err.Error()))
+		common.ApiErrorMsg(c, fmt.Sprintf("支付渠道已退款成功，但系统内部处理失败，请联系管理员。退款单号: %s", refundResult.RefundID))
+		return
+	}
+
+	// 记录退款日志
+	logMsg := fmt.Sprintf("充值订单退款成功，退款额度: %v，订单号: %s，支付渠道退款单号: %s", logger.FormatQuota(refundInfo.QuotaToDeduct), req.TradeNo, refundResult.RefundID)
+	model.RecordTopupLog(userId, logMsg, c.ClientIP(), refundInfo.TopUp.PaymentMethod, "refund")
+
 	common.ApiSuccess(c, nil)
 }

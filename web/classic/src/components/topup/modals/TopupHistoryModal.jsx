@@ -37,6 +37,14 @@ import { IconSearch } from '@douyinfe/semi-icons';
 import { API, timestamp2string } from '../../../helpers';
 import { isAdmin } from '../../../helpers/utils';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
+const PAYMENT_METHOD_NAMES = {
+  stripe: 'Stripe',
+  alipay: 'Alipay',
+  wxpay: 'WeChat Pay',
+  wechat_pay: '微信支付',
+  alipay_direct: '支付宝',
+  waffo: 'Waffo',
+}
 const { Text } = Typography;
 
 // 状态映射配置
@@ -45,15 +53,7 @@ const STATUS_CONFIG = {
   pending: { type: 'warning', key: '待支付' },
   failed: { type: 'danger', key: '失败' },
   expired: { type: 'danger', key: '已过期' },
-};
-
-// 支付方式映射
-const PAYMENT_METHOD_MAP = {
-  stripe: 'Stripe',
-  creem: 'Creem',
-  waffo: 'Waffo',
-  alipay: '支付宝',
-  wxpay: '微信',
+  refunded: { type: 'default', key: '已退款' },
 };
 
 const TopupHistoryModal = ({ visible, onCancel, t }) => {
@@ -134,6 +134,32 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
     });
   };
 
+  // 用户退款
+  const handleRefund = async (tradeNo) => {
+    try {
+      const res = await API.post('/api/user/topup/refund', {
+        trade_no: tradeNo,
+      });
+      const { success, message } = res.data;
+      if (success) {
+        Toast.success({ content: t('退款成功') });
+        await loadTopups(page, pageSize);
+      } else {
+        Toast.error({ content: message || t('退款失败') });
+      }
+    } catch (e) {
+      Toast.error({ content: t('退款失败') });
+    }
+  };
+
+  const confirmRefund = (tradeNo) => {
+    Modal.confirm({
+      title: t('确认退款'),
+      content: t('退款将从您的余额中扣除对应的额度，余额不足则无法退款。确认退款？'),
+      onOk: () => handleRefund(tradeNo),
+    });
+  };
+
   // 渲染状态徽章
   const renderStatusBadge = (status) => {
     const config = STATUS_CONFIG[status] || { type: 'primary', key: status };
@@ -147,7 +173,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
 
   // 渲染支付方式
   const renderPaymentMethod = (pm) => {
-    const displayName = PAYMENT_METHOD_MAP[pm];
+    const displayName = PAYMENT_METHOD_NAMES[pm];
     return <Text>{displayName ? t(displayName) : pm || '-'}</Text>;
   };
 
@@ -217,7 +243,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
       },
     ];
 
-    // 管理员才显示操作列
+    // 管理员才显示补单操作列
     if (userIsAdmin) {
       baseColumns.push({
         title: t('操作'),
@@ -237,7 +263,41 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
               </Button>
             );
           }
+          if (record.status === 'success') {
+            actions.push(
+              <Button
+                key="refund"
+                size='small'
+                type='danger'
+                theme='outline'
+                onClick={() => confirmRefund(record.trade_no)}
+              >
+                {t('退款')}
+              </Button>
+            );
+          }
           return actions.length > 0 ? <>{actions}</> : null;
+        },
+      });
+    } else {
+      // 普通用户操作列（退款）
+      baseColumns.push({
+        title: t('操作'),
+        key: 'action',
+        render: (_, record) => {
+          if (record.status === 'success') {
+            return (
+              <Button
+                size='small'
+                type='danger'
+                theme='outline'
+                onClick={() => confirmRefund(record.trade_no)}
+              >
+                {t('退款')}
+              </Button>
+            );
+          }
+          return null;
         },
       });
     }
@@ -259,6 +319,7 @@ const TopupHistoryModal = ({ visible, onCancel, t }) => {
       onCancel={onCancel}
       footer={null}
       size={isMobile ? 'full-width' : 'large'}
+      style={isMobile ? undefined : { minWidth: '1100px' }}
     >
       <div className='mb-3'>
         <Input
