@@ -83,7 +83,6 @@ const REGION_EXAMPLE = {
   'claude-3-5-sonnet-20240620': 'europe-west1',
 };
 const UPSTREAM_DETECTED_MODEL_PREVIEW_LIMIT = 8;
-const ADVANCED_SETTINGS_EXPANDED_KEY = 'channel-advanced-settings-expanded';
 
 const PARAM_OVERRIDE_LEGACY_TEMPLATE = {
   temperature: 0,
@@ -399,14 +398,10 @@ const EditChannelModal = (props) => {
     [],
   );
 
-  // 剪贴板连接信息自动检测
-  const [clipboardConfig, setClipboardConfig] = useState(null);
-
   // 高级设置折叠状态
   const [advancedSettingsOpen, setAdvancedSettingsOpen] = useState(false);
   const toggleAdvancedSettings = (open) => {
     setAdvancedSettingsOpen(open);
-    localStorage.setItem(ADVANCED_SETTINGS_EXPANDED_KEY, String(open));
   };
   const formContainerRef = useRef(null);
   const doubaoApiClickCountRef = useRef(0);
@@ -557,7 +552,6 @@ const EditChannelModal = (props) => {
       formApiRef.current.setValue('key', config.key);
       formApiRef.current.setValue('base_url', config.url);
     }
-    setClipboardConfig(null);
     showSuccess(t('连接信息已填入'));
   };
 
@@ -1001,26 +995,6 @@ const EditChannelModal = (props) => {
       setIsIonetChannel(managedByIonet);
       setIonetMetadata(parsedIonet);
 
-      // Smart expand: auto-open advanced settings if any advanced field has a value
-      const hasAdvancedValues =
-        (data.model_mapping && data.model_mapping.trim()) ||
-        (data.param_override && data.param_override.trim()) ||
-        (data.status_code_mapping && data.status_code_mapping.trim()) ||
-        (data.header_override && data.header_override.trim()) ||
-        (data.tag && data.tag.trim()) ||
-        (data.remark && data.remark.trim()) ||
-        (data.priority && data.priority !== 0) ||
-        (data.weight && data.weight !== 0) ||
-        (data.proxy && data.proxy.trim()) ||
-        (data.system_prompt && data.system_prompt.trim()) ||
-        data.thinking_to_content ||
-        data.pass_through_body_enabled ||
-        data.force_format ||
-        data.claude_beta_query ||
-        data.system_prompt_override;
-      if (hasAdvancedValues) {
-        setAdvancedSettingsOpen(true);
-      }
     } else {
       showError(message);
     }
@@ -1313,22 +1287,12 @@ const EditChannelModal = (props) => {
         loadChannel();
       } else {
         formApiRef.current?.setValues(getInitValues());
-        try {
-          navigator?.clipboard?.readText()?.then((text) => {
-            const parsed = parseChannelConnectionString(text);
-            if (parsed) {
-              setClipboardConfig(parsed);
-            }
-          }).catch(() => {});
-        } catch {}
       }
       fetchModelGroups();
       // 重置手动输入模式状态
       setUseManualInput(false);
-      // 编辑模式下恢复用户偏好，创建模式一律折叠
-      setAdvancedSettingsOpen(
-        isEdit && localStorage.getItem(ADVANCED_SETTINGS_EXPANDED_KEY) === 'true'
-      );
+      // 默认折叠高级设置，仅手动点击展开
+      setAdvancedSettingsOpen(false);
     } else {
       // 统一的模态框关闭重置逻辑
       resetModalState();
@@ -1383,8 +1347,6 @@ const EditChannelModal = (props) => {
     setInputs(getInitValues());
     // 重置密钥显示状态
     resetKeyDisplayState();
-    // 重置剪贴板检测状态
-    setClipboardConfig(null);
   };
 
   const handleVertexUploadChange = ({ fileList }) => {
@@ -2519,34 +2481,6 @@ const EditChannelModal = (props) => {
             <>
             <Spin spinning={loading}>
               <div className='p-2 space-y-3' ref={formContainerRef}>
-                {!isEdit && clipboardConfig && (
-                  <Banner
-                    type='info'
-                    className='ec-dbcd0a3c01b55203'
-                    description={
-                      <div className='flex items-center justify-between gap-2'>
-                        <span>{t('检测到剪贴板中的连接信息')}</span>
-                        <div className='flex gap-1'>
-                          <Button
-                            size='small'
-                            theme='solid'
-                            type='primary'
-                            onClick={() => applyClipboardConfig(clipboardConfig)}
-                          >
-                            {t('自动填入')}
-                          </Button>
-                          <Button
-                            size='small'
-                            type='tertiary'
-                            onClick={() => setClipboardConfig(null)}
-                          >
-                            {t('忽略')}
-                          </Button>
-                        </div>
-                      </div>
-                    }
-                  />
-                )}
                 {/* Core Configuration Card - Always Visible */}
                 <Card className='!rounded-2xl shadow-sm border-0'>
                   {/* Header */}

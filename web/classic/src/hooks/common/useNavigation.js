@@ -60,9 +60,10 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
           ]
         : []),
       {
-        text: t('关于'),
+        text: t('算力券平台'),
         itemKey: 'about',
-        to: '/about',
+        isExternal: true,
+        externalLink: 'https://lychee.thinkarts.cn/computing-power-coupon-web',
       },
     ];
 

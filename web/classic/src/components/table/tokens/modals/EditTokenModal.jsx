@@ -361,42 +361,80 @@ const EditTokenModal = (props) => {
                   <Col xs={24} md={12}>
                     <Row gutter={8}>
                       <Col xs={24} sm={10}>
-                        <Form.DatePicker
-                          field='expired_time'
-                          label={
-                            <span className='token-field-label'>
-                              {t('过期时间')}
-                            </span>
-                          }
-                          type='dateTime'
-                          placeholder={t('请选择过期时间')}
-                          rules={[
-                            {
-                              required: true,
-                              message: t('请选择过期时间'),
-                            },
-                            {
-                              validator: (rule, value) => {
-                                if (value === -1 || !value)
-                                  return Promise.resolve();
-                                const time = Date.parse(value);
-                                if (isNaN(time)) {
-                                  return Promise.reject(
-                                    t('过期时间格式错误！'),
-                                  );
-                                }
-                                if (time <= Date.now()) {
-                                  return Promise.reject(
-                                    t('过期时间不能早于当前时间！'),
-                                  );
-                                }
-                                return Promise.resolve();
+                        {values.expired_time === -1 ? (
+                          <Form.Slot
+                            label={
+                              <span className='token-field-label'>
+                                {t('过期时间')}
+                              </span>
+                            }
+                          >
+                            <div
+                              className='token-never-expire-field'
+                              title={t('请选择过期时间')}
+                              onClick={() =>
+                                formApiRef.current?.setValue(
+                                  'expired_time',
+                                  undefined,
+                                )
+                              }
+                            >
+                              <svg
+                                className='token-never-expire-icon'
+                                viewBox='0 0 24 24'
+                                width='16'
+                                height='16'
+                                fill='none'
+                                stroke='currentColor'
+                                strokeWidth='2'
+                                strokeLinecap='round'
+                                strokeLinejoin='round'
+                                aria-hidden='true'
+                              >
+                                <path d='M12 12c-2-2.67-4-4-6-4a4 4 0 1 0 0 8c2 0 4-1.33 6-4Zm0 0c2 2.67 4 4 6 4a4 4 0 0 0 0-8c-2 0-4 1.33-6 4Z' />
+                              </svg>
+                              {t('永不过期')}
+                            </div>
+                          </Form.Slot>
+                        ) : (
+                          <Form.DatePicker
+                            field='expired_time'
+                            keepState
+                            label={
+                              <span className='token-field-label'>
+                                {t('过期时间')}
+                              </span>
+                            }
+                            type='dateTime'
+                            placeholder={t('请选择过期时间')}
+                            rules={[
+                              {
+                                required: true,
+                                message: t('请选择过期时间'),
                               },
-                            },
-                          ]}
-                          showClear
-                          style={{ width: '100%' }}
-                        />
+                              {
+                                validator: (rule, value) => {
+                                  if (value === -1 || !value)
+                                    return Promise.resolve();
+                                  const time = Date.parse(value);
+                                  if (isNaN(time)) {
+                                    return Promise.reject(
+                                      t('过期时间格式错误！'),
+                                    );
+                                  }
+                                  if (time <= Date.now()) {
+                                    return Promise.reject(
+                                      t('过期时间不能早于当前时间！'),
+                                    );
+                                  }
+                                  return Promise.resolve();
+                                },
+                              },
+                            ]}
+                            showClear
+                            style={{ width: '100%' }}
+                          />
+                        )}
                       </Col>
                       <Col xs={24} sm={14}>
                         <Form.Slot
@@ -410,7 +448,7 @@ const EditTokenModal = (props) => {
                             <Button
                               size='default'
                               theme='light'
-                              type='primary'
+                              type='tertiary'
                               onClick={() => setExpiredTime(0, 0, 0, 0)}
                             >
                               {t('永不过期')}
