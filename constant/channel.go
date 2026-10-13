@@ -57,6 +57,7 @@ const (
 	ChannelTypeCodex          = 57
 	ChannelTypeHunyuanVideo   = 58 // 混元生视频
 	ChannelTypePingXingShiJie = 59
+	ChannelTypeTokenHub       = 60 // 腾讯云大模型服务平台 TokenHub
 	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
 )
@@ -122,6 +123,7 @@ var ChannelBaseURLs = []string{
 	"https://chatgpt.com",                       //57
 	"https://vclm.tencentcloudapi.com",          //58 - 混元生视频
 	"https://api.pingxingshijie.cn",             //59 PingXingShiJie
+	"https://tokenhub.tencentmaas.com",          //60 TokenHub
 }
 
 var ChannelTypeNames = map[int]string{
@@ -181,6 +183,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeCodex:          "Codex",
 	ChannelTypeHunyuanVideo:   "HunyuanVideo",
 	ChannelTypePingXingShiJie: "PingXingShiJie",
+	ChannelTypeTokenHub:       "TokenHub",
 }
 
 func GetChannelTypeName(channelType int) string {

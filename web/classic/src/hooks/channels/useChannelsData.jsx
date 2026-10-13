@@ -891,7 +891,7 @@ export const useChannelsData = () => {
         return Promise.resolve();
       }
 
-      const { success, message, time, error_code } = res.data;
+      const { success, message, time, error_code } = res.data || {};
 
       // 更新测试结果
       setModelTestResults((prev) => ({

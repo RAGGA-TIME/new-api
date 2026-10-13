@@ -513,6 +513,11 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 	if task.PrivateData.UpstreamKind != "" {
 		ft["upstream_kind"] = task.PrivateData.UpstreamKind
 	}
+	if task.Properties.UpstreamModelName != "" {
+		ft["model"] = task.Properties.UpstreamModelName
+	} else if task.Properties.OriginModelName != "" {
+		ft["model"] = task.Properties.OriginModelName
+	}
 	resp, err := adaptor.FetchTask(baseURL, channelModel.Key, ft, proxy)
 	if err != nil || resp == nil {
 		return nil

@@ -24,6 +24,7 @@ import (
 	"github.com/QuantumNous/new-api/relay"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/relay/channel/tokenhub"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -54,7 +55,123 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 	if channel != nil && channel.Type == constant.ChannelTypeCodex {
 		return string(constant.EndpointTypeOpenAIResponse)
 	}
+	// TokenHub: async generation models (video / 3D / async image) do not
+	// exist on the chat endpoint — route auto-detect to the video task test.
+	if channel != nil && channel.Type == constant.ChannelTypeTokenHub &&
+		(tokenhub.IsVideoModel(modelName) || tokenhub.Is3DModel(modelName) || tokenhub.IsAsyncImageModel(modelName)) {
+		return string(constant.EndpointTypeOpenAIVideo)
+	}
 	return normalized
+}
+
+// pickTokenHubTestModel returns the first model that can be tested over the
+// chat/image endpoints (i.e. not an async video/3D/async-image/TTS model).
+func pickTokenHubTestModel(models []string, fallback string) string {
+	isTestable := func(m string) bool {
+		return !tokenhub.IsVideoModel(m) && !tokenhub.Is3DModel(m) &&
+			!tokenhub.IsAsyncImageModel(m) && !tokenhub.IsTTSModel(m)
+	}
+	for _, m := range models {
+		if isTestable(strings.TrimSpace(m)) {
+			return strings.TrimSpace(m)
+		}
+	}
+	return fallback
+}
+
+// testVideoTaskChannel submits a real async generation task through the
+// channel's TaskAdaptor and reports success when the upstream accepts the
+// submission (i.e. returns a task id). Used for the "openai-video" endpoint
+// type in channel tests, covering video / 3D / async-image generation models
+// that have no synchronous relay surface.
+func testVideoTaskChannel(c *gin.Context, channel *model.Channel, testModel string) testResult {
+	platform := constant.TaskPlatform(strconv.Itoa(channel.Type))
+	adaptor := relay.GetTaskAdaptor(platform)
+	if adaptor == nil {
+		return testResult{
+			localErr: fmt.Errorf("channel type %s does not support video task testing", constant.GetChannelTypeName(channel.Type)),
+		}
+	}
+
+	info, err := relaycommon.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
+	if err != nil {
+		return testResult{
+			localErr:    err,
+			newAPIError: types.NewError(err, types.ErrorCodeGenRelayInfoFailed),
+		}
+	}
+	info.IsChannelTest = true
+	info.InitChannelMeta(c)
+	info.OriginModelName = testModel
+	if err := helper.ModelMappedHelper(c, info, nil); err != nil {
+		return testResult{
+			localErr:    err,
+			newAPIError: types.NewError(err, types.ErrorCodeChannelModelMappedError),
+		}
+	}
+	if info.TaskRelayInfo == nil {
+		info.TaskRelayInfo = &relaycommon.TaskRelayInfo{}
+	}
+	info.TaskRelayInfo.PublicTaskID = model.GenerateTaskID()
+
+	// The test context's Request is hand-crafted with a nil Body; task relay
+	// closes it after the upstream call (see channel.doRequest), so provide a
+	// non-nil body to avoid a nil-pointer panic.
+	if c.Request.Body == nil {
+		c.Request.Body = http.NoBody
+	}
+
+	adaptor.Init(info)
+
+	// Store the task request for the adaptor's BuildRequestBody.
+	c.Set("task_request", relaycommon.TaskSubmitReq{
+		Prompt: "a cute cat running on the grass",
+		Model:  info.UpstreamModelName,
+	})
+
+	body, err := adaptor.BuildRequestBody(c, info)
+	if err != nil {
+		return testResult{localErr: fmt.Errorf("build request failed: %w", err)}
+	}
+	resp, err := adaptor.DoRequest(c, info, body)
+	if err != nil {
+		return testResult{localErr: fmt.Errorf("do request failed: %w", err)}
+	}
+	if resp == nil {
+		return testResult{localErr: errors.New("empty upstream response")}
+	}
+	if resp.StatusCode != http.StatusOK {
+		responseBody, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		return testResult{
+			localErr: fmt.Errorf("bad response status code %d, body: %s", resp.StatusCode, string(responseBody)),
+		}
+	}
+
+	// adaptor.DoResponse writes the OpenAI-video JSON via c.JSON. Use a
+	// throwaway recorder context so the real test response
+	// ({"success": ..., "message": ...}) is not polluted — otherwise the
+	// client receives a response without the success/message fields and the
+	// frontend crashes reading .message of undefined.
+	respRecorder := httptest.NewRecorder()
+	respCtx, _ := gin.CreateTestContext(respRecorder)
+	respCtx.Request = c.Request
+	if _, _, taskErr := adaptor.DoResponse(respCtx, resp, info); taskErr != nil {
+		return testResult{localErr: taskErrorToLocal(taskErr)}
+	}
+	return testResult{context: c, localErr: nil}
+}
+
+// taskErrorToLocal flattens a *dto.TaskError into a plain error for the
+// channel-test result (TaskError.Error is a field, not a method).
+func taskErrorToLocal(taskErr *dto.TaskError) error {
+	if taskErr == nil {
+		return nil
+	}
+	if taskErr.Error != nil {
+		return taskErr.Error
+	}
+	return fmt.Errorf("%s", taskErr.Message)
 }
 
 func testChannel(channel *model.Channel, testModel string, endpointType string, isStream bool) testResult {
@@ -85,6 +202,12 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			models := channel.GetModels()
 			if len(models) > 0 {
 				testModel = strings.TrimSpace(models[0])
+			}
+			// TokenHub channels usually mix chat/image models with async
+			// generation (video/3D/TTS) models. Prefer a chat-testable model
+			// so automatic channel health checks don't fail on async models.
+			if channel.Type == constant.ChannelTypeTokenHub {
+				testModel = pickTokenHubTestModel(models, testModel)
 			}
 			if testModel == "" {
 				testModel = "gpt-4o-mini"
@@ -124,6 +247,14 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 
 		// PingXingShiJie: sync image models use OpenAI image relay; text uses chat (Volc-style upstream via adaptor mapping).
 		if channel.Type == constant.ChannelTypePingXingShiJie && strings.Contains(strings.ToLower(testModel), "seedream") {
+			requestPath = "/v1/images/generations"
+		}
+
+		// TokenHub: sync image models test via the OpenAI image relay; async
+		// generation models (video / 3D / async image) are routed to the video
+		// task test by normalizeChannelTestEndpoint; TTS models are not
+		// testable through the chat endpoint.
+		if channel.Type == constant.ChannelTypeTokenHub && tokenhub.IsImageModel(testModel) {
 			requestPath = "/v1/images/generations"
 		}
 
@@ -222,6 +353,13 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		if strings.HasPrefix(c.Request.URL.Path, "/v1/responses/compact") {
 			relayFormat = types.RelayFormatOpenAIResponsesCompaction
 		}
+	}
+
+	// Video task endpoint test: submit a real task via the TaskAdaptor.
+	// Async generation models (video/3D/async-image) have no sync relay
+	// surface, so the sync relay flow below cannot be used.
+	if endpointType == string(constant.EndpointTypeOpenAIVideo) {
+		return testVideoTaskChannel(c, channel, testModel)
 	}
 
 	request := buildTestRequest(testModel, endpointType, channel, isStream)
@@ -784,6 +922,16 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 			Model:  model,
 			Input:  json.RawMessage(`[{"role":"user","content":"hi"}]`),
 			Stream: lo.ToPtr(isStream),
+		}
+	}
+
+	// TokenHub sync image models test through the image generation endpoint.
+	if channel != nil && channel.Type == constant.ChannelTypeTokenHub && tokenhub.IsImageModel(model) {
+		return &dto.ImageRequest{
+			Model:  model,
+			Prompt: "a cute cat",
+			N:      lo.ToPtr(uint(1)),
+			Size:   "1024x1024",
 		}
 	}
 

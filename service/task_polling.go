@@ -371,6 +371,11 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	if task.PrivateData.UpstreamKind != "" {
 		fetchBody["upstream_kind"] = task.PrivateData.UpstreamKind
 	}
+	if task.Properties.UpstreamModelName != "" {
+		fetchBody["model"] = task.Properties.UpstreamModelName
+	} else if task.Properties.OriginModelName != "" {
+		fetchBody["model"] = task.Properties.OriginModelName
+	}
 	resp, err := adaptor.FetchTask(baseURL, key, fetchBody, proxy)
 	if err != nil {
 		return fmt.Errorf("fetchTask failed for task %s: %w", taskId, err)

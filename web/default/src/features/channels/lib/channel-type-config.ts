@@ -116,6 +116,17 @@ export const CHANNEL_TYPE_CONFIGS: Record<number, ChannelTypeConfig> = {
       baseUrl: 'Default: https://api.replicate.com',
     },
   },
+  60: {
+    id: 60,
+    name: CHANNEL_TYPES[60],
+    icon: 'openai',
+    defaultBaseUrl: 'https://tokenhub.tencentmaas.com',
+    hints: {
+      key: 'TokenHub API Key (guangzhou) — for Singapore use base URL https://tokenhub-intl.tencentmaas.com',
+      models: 'hy4-preview,glm-5.3,kimi-k3,deepseek-v4-pro,hy-image-v3,hy-video-v1.5,hy-3d-3.0,minimax-speech-2.8-hd',
+      baseUrl: 'Default: https://tokenhub.tencentmaas.com (intl: https://tokenhub-intl.tencentmaas.com)',
+    },
+  },
 }
 
 /**

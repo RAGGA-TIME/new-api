@@ -208,12 +208,13 @@ export async function handleTestChannel(
 
   try {
     const response = await testChannel(id, payload)
-    if (response.success) {
+    if (response?.success) {
       toast.success(i18next.t(SUCCESS_MESSAGES.TESTED))
       onTestComplete?.(true, response.data?.response_time)
     } else {
-      toast.error(response.message || i18next.t(ERROR_MESSAGES.TEST_FAILED))
-      onTestComplete?.(false, undefined, response.message, response.error_code)
+      const msg = response?.message || i18next.t(ERROR_MESSAGES.TEST_FAILED)
+      toast.error(msg)
+      onTestComplete?.(false, undefined, msg, response?.error_code)
     }
   } catch (_error: unknown) {
     const err = _error as { response?: { data?: { message?: string } } }

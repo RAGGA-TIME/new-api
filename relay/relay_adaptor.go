@@ -40,9 +40,10 @@ import (
 	tasksora "github.com/QuantumNous/new-api/relay/channel/task/sora"
 	"github.com/QuantumNous/new-api/relay/channel/task/suno"
 	tasktencent "github.com/QuantumNous/new-api/relay/channel/task/tencent"
-	taskvertex "github.com/QuantumNous/new-api/relay/channel/task/vertex"
+	taskvertex 	"github.com/QuantumNous/new-api/relay/channel/task/vertex"
 	taskVidu "github.com/QuantumNous/new-api/relay/channel/task/vidu"
 	"github.com/QuantumNous/new-api/relay/channel/tencent"
+	"github.com/QuantumNous/new-api/relay/channel/tokenhub"
 	"github.com/QuantumNous/new-api/relay/channel/vertex"
 	"github.com/QuantumNous/new-api/relay/channel/volcengine"
 	"github.com/QuantumNous/new-api/relay/channel/xai"
@@ -122,6 +123,8 @@ func GetAdaptor(apiType int) channel.Adaptor {
 		return &replicate.Adaptor{}
 	case constant.APITypeCodex:
 		return &codex.Adaptor{}
+	case constant.APITypeTokenHub:
+		return &tokenhub.Adaptor{}
 	}
 	return nil
 }
@@ -164,6 +167,8 @@ func GetTaskAdaptor(platform constant.TaskPlatform) channel.TaskAdaptor {
 			return &hailuo.TaskAdaptor{}
 		case constant.ChannelTypeHunyuanVideo:
 			return &tasktencent.TaskAdaptor{}
+		case constant.ChannelTypeTokenHub:
+			return &tokenhub.TaskAdaptor{}
 		}
 	}
 	return nil
